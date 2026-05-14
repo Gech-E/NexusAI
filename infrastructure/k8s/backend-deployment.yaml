@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-backend
+  labels:
+    app: nexus-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-backend
+  template:
+    metadata:
+      labels:
+        app: nexus-backend
+    spec:
+      containers:
+      - name: nexus-backend
+        image: nexus-learnai/backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: nexus-secrets
+              key: database-url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-backend-service
+spec:
+  selector:
+    app: nexus-backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

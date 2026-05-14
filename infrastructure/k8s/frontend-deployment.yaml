@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-frontend
+  labels:
+    app: nexus-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-frontend
+  template:
+    metadata:
+      labels:
+        app: nexus-frontend
+    spec:
+      containers:
+      - name: nexus-frontend
+        image: nexus-learnai/frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://nexus-backend-service"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-frontend-service
+spec:
+  selector:
+    app: nexus-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: LoadBalancer

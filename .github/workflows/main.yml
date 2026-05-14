@@ -1,0 +1,55 @@
+name: Nexus LearnAI CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Run linting
+      run: |
+        cd backend
+        # Add linting commands like flake8 or black check here
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm install
+    - name: Run build
+      run: |
+        cd frontend
+        npm run build
+
+  build-and-push:
+    needs: [backend-test, frontend-test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v3
+    # Add steps to login to Docker Hub and push images here
+    - name: Build Backend Image
+      run: docker build -t nexus-learnai/backend:latest ./backend
+    - name: Build Frontend Image
+      run: docker build -t nexus-learnai/frontend:latest ./frontend
