@@ -40,11 +40,16 @@ async def teacher_summary(
     db: DbSession, 
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))]
 ) -> dict:
-    # In a real app, we'd filter by the teacher's classes/students
-    total_students_query = select(User).where(User.role == UserRole.STUDENT)
-    total_students_result = await db.execute(total_students_query)
-    total_students = len(total_students_result.scalars().all())
-    
+    from app.infrastructure.models.user import UserRoleAssignment
+    from sqlalchemy import func
+
+    student_count_q = await db.execute(
+        select(func.count(UserRoleAssignment.id)).where(
+            UserRoleAssignment.role == UserRole.STUDENT
+        )
+    )
+    total_students = student_count_q.scalar() or 0
+
     return {
         "active_students": total_students,
         "avg_class_performance": 78.4,

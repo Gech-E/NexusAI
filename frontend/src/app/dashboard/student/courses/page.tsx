@@ -1,75 +1,182 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Book, Play, Clock, Star, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { Play, Clock, Star, BookOpen, Loader2, Plus, CheckCircle2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 
-const COURSES = [
-  { id: 1, title: 'Advanced Mathematics', progress: 45, duration: '12h', level: 'Advanced', image: 'https://images.unsplash.com/photo-1509228468518-180dd4822edb?auto=format&fit=crop&q=80&w=400' },
-  { id: 2, title: 'Introduction to AI', progress: 10, duration: '8h', level: 'Beginner', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&q=80&w=400' },
-  { id: 3, title: 'Data Structures', progress: 85, duration: '15h', level: 'Intermediate', image: 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?auto=format&fit=crop&q=80&w=400' },
-];
+interface CourseItem {
+  id: string;
+  title: string;
+  subject: string;
+  description: string | null;
+  school_id: string;
+}
+
+interface EnrolledCourse {
+  course_id: string;
+  course_title: string;
+  subject: string;
+  progress: number;
+}
 
 export default function CoursesPage() {
-  return (
-    <div className="min-h-screen bg-[#020617] p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard/student" className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors">
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </Link>
-          <h1 className="text-3xl font-bold text-white">Your Courses</h1>
-        </div>
+  const accessToken = useAppStore(state => state.accessToken);
+  const [allCourses, setAllCourses] = useState<CourseItem[]>([]);
+  const [enrolled, setEnrolled] = useState<EnrolledCourse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [enrolling, setEnrolling] = useState<string | null>(null);
+  const [tab, setTab] = useState<'enrolled' | 'browse'>('enrolled');
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {COURSES.map((course, idx) => (
-            <motion.div
-              key={course.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="glassmorphism overflow-hidden rounded-3xl border border-slate-700/50 flex flex-col group"
-            >
-              <div className="h-48 overflow-hidden relative">
-                <img src={course.image} alt={course.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-xs text-white border border-white/10">
-                  {course.level}
+  const fetchData = async () => {
+    if (!accessToken) return;
+    try {
+      const [coursesRes, enrolledRes] = await Promise.all([
+        fetch('http://localhost:8000/api/v1/courses', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+        fetch('http://localhost:8000/api/v1/courses/me/enrolled', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+      ]);
+      if (coursesRes.ok) setAllCourses(await coursesRes.json());
+      if (enrolledRes.ok) setEnrolled(await enrolledRes.json());
+    } catch (err) {
+      console.error('Failed to fetch courses:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [accessToken]);
+
+  const handleEnroll = async (courseId: string) => {
+    if (!accessToken) return;
+    setEnrolling(courseId);
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/courses/enroll/${courseId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      if (res.ok) {
+        await fetchData();
+        setTab('enrolled');
+      }
+    } catch (err) {
+      console.error('Enroll failed:', err);
+    } finally {
+      setEnrolling(null);
+    }
+  };
+
+  const enrolledIds = new Set(enrolled.map(e => e.course_id));
+  const availableCourses = allCourses.filter(c => !enrolledIds.has(c.id));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold text-white mb-1">Courses</h1>
+        <p className="text-slate-400 text-sm">Browse, enroll, and track your progress</p>
+      </motion.div>
+
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {(['enrolled', 'browse'] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${tab === t ? 'bg-cyan-500 text-slate-900' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}
+          >
+            {t === 'enrolled' ? `My Courses (${enrolled.length})` : `Browse (${availableCourses.length})`}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'enrolled' ? (
+        enrolled.length === 0 ? (
+          <div className="glassmorphism p-12 rounded-2xl text-center">
+            <BookOpen className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+            <p className="text-slate-400 mb-4">You haven&apos;t enrolled in any courses yet</p>
+            <button onClick={() => setTab('browse')}
+              className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
+            >Browse Courses</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {enrolled.map((course, idx) => (
+              <motion.div
+                key={course.course_id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.08 }}
+                className="glassmorphism p-6 rounded-2xl border border-slate-700/50 flex flex-col"
+              >
+                <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/20 rounded-xl flex items-center justify-center mb-4">
+                  <BookOpen className="w-6 h-6 text-cyan-400" />
                 </div>
-              </div>
-              
-              <div className="p-6 flex-1 flex flex-col">
-                <h2 className="text-xl font-bold text-white mb-2">{course.title}</h2>
-                <div className="flex items-center gap-4 text-slate-400 text-sm mb-4">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" /> {course.duration}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-yellow-500" /> 4.9
-                  </div>
-                </div>
+                <h2 className="text-lg font-bold text-white mb-1">{course.course_title}</h2>
+                <p className="text-slate-500 text-sm mb-4">{course.subject}</p>
 
                 <div className="mt-auto">
                   <div className="flex justify-between text-xs mb-2">
                     <span className="text-slate-400">Progress</span>
-                    <span className="text-cyan-400 font-medium">{course.progress}%</span>
+                    <span className="text-cyan-400 font-medium">{Math.round(course.progress)}%</span>
                   </div>
                   <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${course.progress}%` }}
-                      className="h-full bg-cyan-500" 
-                    />
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${course.progress}%` }}
+                      transition={{ duration: 0.8, delay: 0.3 + idx * 0.1 }}
+                      className="h-full bg-cyan-500 rounded-full" />
                   </div>
-                  <button className="w-full mt-6 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                  <button className="w-full mt-5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
                     <Play className="w-4 h-4 fill-current" /> Continue
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
+              </motion.div>
+            ))}
+          </div>
+        )
+      ) : (
+        availableCourses.length === 0 ? (
+          <div className="glassmorphism p-12 rounded-2xl text-center">
+            <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+            <p className="text-slate-400">You&apos;re enrolled in all available courses!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {availableCourses.map((course, idx) => (
+              <motion.div
+                key={course.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.08 }}
+                className="glassmorphism p-6 rounded-2xl border border-slate-700/50 flex flex-col"
+              >
+                <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center mb-4">
+                  <BookOpen className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h2 className="text-lg font-bold text-white mb-1">{course.title}</h2>
+                <p className="text-slate-500 text-sm mb-2">{course.subject}</p>
+                {course.description && (
+                  <p className="text-slate-600 text-xs mb-4 line-clamp-2">{course.description}</p>
+                )}
+                <button
+                  onClick={() => handleEnroll(course.id)}
+                  disabled={enrolling === course.id}
+                  className="mt-auto w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {enrolling === course.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <><Plus className="w-4 h-4" /> Enroll</>
+                  )}
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }

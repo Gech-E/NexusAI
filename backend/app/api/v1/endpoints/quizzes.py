@@ -84,3 +84,164 @@ async def my_attempts(db: DbSession, user: CurrentUser):
     result = await db.execute(query)
     attempts = result.scalars().all()
     return attempts
+
+
+class QuestionOut(BaseModel):
+    id: UUID
+    prompt: str
+    choices: list[str]
+    difficulty: float
+    topic_tags: list[str]
+
+    model_config = {"from_attributes": True}
+
+
+class QuizStartResponse(BaseModel):
+    attempt_id: UUID
+    quiz_title: str
+    description: str | None
+    questions: list[QuestionOut]
+    total_questions: int
+
+
+class AnswerSubmission(BaseModel):
+    answers: dict[str, int]  # Maps question_id -> selected_choice_index
+
+
+class QuestionFeedback(BaseModel):
+    question_id: str
+    prompt: str
+    selected_index: int
+    correct_index: int
+    is_correct: bool
+    choices: list[str]
+
+
+class QuizSubmitResponse(BaseModel):
+    score: float
+    correct_count: int
+    total_questions: int
+    percentage: float
+    feedback: list[QuestionFeedback]
+
+
+from datetime import UTC, datetime
+
+
+@router.post("/{quiz_id}/start", response_model=QuizStartResponse)
+async def start_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
+    """Start a quiz attempt — returns questions WITHOUT correct answers."""
+    result = await db.execute(
+        select(Quiz)
+        .where(Quiz.id == quiz_id)
+        .options(selectinload(Quiz.questions))
+    )
+    quiz = result.scalar_one_or_none()
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    # Create attempt
+    attempt = QuizAttempt(
+        quiz_id=quiz.id,
+        student_user_id=user.id,
+        started_at=datetime.now(tz=UTC),
+        answers={},
+    )
+    db.add(attempt)
+    await db.commit()
+    await db.refresh(attempt)
+
+    # Return questions without correct_index
+    questions_out = [
+        {
+            "id": q.id,
+            "prompt": q.prompt,
+            "choices": q.choices,
+            "difficulty": q.difficulty,
+            "topic_tags": q.topic_tags,
+        }
+        for q in quiz.questions
+    ]
+
+    return {
+        "attempt_id": attempt.id,
+        "quiz_title": quiz.title,
+        "description": quiz.description,
+        "questions": questions_out,
+        "total_questions": len(questions_out),
+    }
+
+
+@router.post("/{quiz_id}/submit", response_model=QuizSubmitResponse)
+async def submit_quiz(
+    quiz_id: UUID, payload: AnswerSubmission, db: DbSession, user: CurrentUser
+) -> dict:
+    """Submit quiz answers, score them, and return feedback."""
+    # Find the latest un-submitted attempt
+    attempt_q = await db.execute(
+        select(QuizAttempt)
+        .where(
+            QuizAttempt.quiz_id == quiz_id,
+            QuizAttempt.student_user_id == user.id,
+            QuizAttempt.submitted_at.is_(None),
+        )
+        .order_by(QuizAttempt.created_at.desc())
+    )
+    attempt = attempt_q.scalar_one_or_none()
+    if not attempt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active attempt found. Start the quiz first.",
+        )
+
+    # Load questions
+    questions_q = await db.execute(
+        select(Question).where(Question.quiz_id == quiz_id)
+    )
+    questions = questions_q.scalars().all()
+    question_map = {str(q.id): q for q in questions}
+
+    # Score
+    correct_count = 0
+    feedback_list = []
+    for q in questions:
+        qid = str(q.id)
+        selected = payload.answers.get(qid, -1)
+        is_correct = selected == q.correct_index
+        if is_correct:
+            correct_count += 1
+        feedback_list.append({
+            "question_id": qid,
+            "prompt": q.prompt,
+            "selected_index": selected,
+            "correct_index": q.correct_index,
+            "is_correct": is_correct,
+            "choices": q.choices,
+        })
+
+    total = len(questions)
+    score = correct_count / total if total > 0 else 0.0
+    percentage = round(score * 100, 1)
+
+    # Update attempt
+    attempt.submitted_at = datetime.now(tz=UTC)
+    attempt.answers = payload.answers
+
+    # Create result
+    quiz_result = QuizResult(
+        attempt_id=attempt.id,
+        score=score,
+        skill_estimate={"overall": score},
+        feedback={"details": f"{correct_count}/{total} correct"},
+    )
+    db.add(quiz_result)
+    await db.commit()
+
+    return {
+        "score": score,
+        "correct_count": correct_count,
+        "total_questions": total,
+        "percentage": percentage,
+        "feedback": feedback_list,
+    }
+
