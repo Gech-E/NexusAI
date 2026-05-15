@@ -41,7 +41,10 @@ class AuthService:
         self.session.add(user)
         await self.session.flush()
 
-        self.session.add(UserRoleAssignment(user_id=user.id, role=UserRole.STUDENT))
+        # Assign the requested role, default to STUDENT
+        role_map = {"teacher": UserRole.TEACHER, "admin": UserRole.ADMIN}
+        assigned_role = role_map.get(data.role, UserRole.STUDENT) if data.role else UserRole.STUDENT
+        self.session.add(UserRoleAssignment(user_id=user.id, role=assigned_role))
 
         if data.school_slug:
             res = await self.session.execute(select(School).where(School.slug == data.school_slug))
