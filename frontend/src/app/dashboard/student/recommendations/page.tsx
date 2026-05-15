@@ -44,7 +44,7 @@ export default function Recommendations() {
   const fetchRecs = async () => {
     if (!accessToken) return;
     try {
-      const res = await fetch('http://localhost:8000/api/v1/recommendations/me', {
+      const res = await fetch('http://127.0.0.1:8000/api/v1/recommendations/me', {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
       if (res.ok) setRecommendations(await res.json());
@@ -61,7 +61,7 @@ export default function Recommendations() {
     if (!accessToken) return;
     setRefreshing(true);
     try {
-      await fetch('http://localhost:8000/api/v1/recommendations/me/refresh', {
+      await fetch('http://127.0.0.1:8000/api/v1/recommendations/me/refresh', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });

@@ -21,7 +21,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const loginRes = await fetch('http://localhost:8000/api/v1/auth/login', {
+      const loginRes = await fetch('http://127.0.0.1:8000/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -34,7 +34,7 @@ export default function LoginPage() {
 
       const { access_token, refresh_token } = await loginRes.json();
 
-      const userRes = await fetch('http://localhost:8000/api/v1/users/me', {
+      const userRes = await fetch('http://127.0.0.1:8000/api/v1/users/me', {
         headers: { 'Authorization': `Bearer ${access_token}` },
       });
 

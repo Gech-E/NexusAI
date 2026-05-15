@@ -54,7 +54,7 @@ export default function CreateExam() {
         school_id: '00000000-0000-0000-0000-000000000001',
         questions: questions.map(q => ({ ...q, topic_tags: q.topic_tags.length ? q.topic_tags : [title.toLowerCase()] }))
       };
-      const res = await fetch('http://localhost:8000/api/v1/quizzes', {
+      const res = await fetch('http://127.0.0.1:8000/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify(payload),

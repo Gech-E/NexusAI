@@ -34,7 +34,7 @@ export default function RegisterPage() {
         school_slug: 'demo-school'
       };
 
-      const registerRes = await fetch('http://localhost:8000/api/v1/auth/register', {
+      const registerRes = await fetch('http://127.0.0.1:8000/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -47,7 +47,7 @@ export default function RegisterPage() {
 
       const { access_token, refresh_token } = await registerRes.json();
 
-      const userRes = await fetch('http://localhost:8000/api/v1/users/me', {
+      const userRes = await fetch('http://127.0.0.1:8000/api/v1/users/me', {
         headers: { 'Authorization': `Bearer ${access_token}` },
       });
 

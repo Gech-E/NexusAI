@@ -18,7 +18,7 @@ export const useOfflineSync = () => {
       
       if (offlineQueue.length > 0 && accessToken) {
         try {
-          const response = await fetch('http://localhost:8000/api/v1/sync/bulk', {
+          const response = await fetch('http://127.0.0.1:8000/api/v1/sync/bulk', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

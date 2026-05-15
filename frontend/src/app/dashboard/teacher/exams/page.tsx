@@ -18,7 +18,7 @@ export default function ExamsList() {
     const fetchQuizzes = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://localhost:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        const res = await fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } });
         if (res.ok) setQuizzes(await res.json());
       } catch { /* ignore */ }
       finally { setLoading(false); }
