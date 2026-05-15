@@ -7,12 +7,14 @@ Nexus LearnAI is a state-of-the-art Learning Management System designed for the 
 ## 🚀 Key Features
 
 ### 👨‍🎓 For Students
+
 - **Interactive AI Tutor**: Personalized real-time learning assistance powered by local RAG (Retrieval-Augmented Generation).
 - **Offline-First Mode**: Track your progress and take assessments even without an internet connection; data syncs automatically when back online.
 - **Skill Mastery Analytics**: Visualise your learning journey with dynamic charts and performance trends.
 - **Smart Quizzes**: Adaptive assessments that adjust to your level.
 
 ### 👩‍🏫 For Teachers
+
 - **Live CV Proctoring**: Real-time Computer Vision alerts for exam integrity (Gaze detection, unauthorized materials).
 - **Classroom Insights**: Deep analytics on student performance and engagement.
 - **Exam Builder**: Create and schedule smart assessments with customizable proctoring levels.
@@ -20,22 +22,24 @@ Nexus LearnAI is a state-of-the-art Learning Management System designed for the 
 
 ## 🛠️ Technology Stack
 
-| Layer | Technology |
-|-------|------------|
+| Layer        | Technology                                                |
+| ------------ | --------------------------------------------------------- |
 | **Frontend** | Next.js 15, React 19, TailwindCSS, Framer Motion, Zustand |
-| **Backend** | FastAPI (Python 3.12+), SQLAlchemy 2.0, Pydantic v2 |
-| **Database** | PostgreSQL / SQLite (Development), Redis (Caching) |
-| **AI/ML** | ONNX Runtime, Custom C++ Bindings (Optional High-Perf) |
-| **DevOps** | Docker, Uvicorn, WatchFiles |
+| **Backend**  | FastAPI (Python 3.12+), SQLAlchemy 2.0, Pydantic v2       |
+| **Database** | PostgreSQL / SQLite (Development), Redis (Caching)        |
+| **AI/ML**    | ONNX Runtime, Custom C++ Bindings (Optional High-Perf)    |
+| **DevOps**   | Docker, Uvicorn, WatchFiles                               |
 
 ## 📦 Getting Started
 
 ### 1. Prerequisites
+
 - **Python 3.12+**
 - **Node.js 20+**
 - **PostgreSQL** (Optional, SQLite works out of the box)
 
 ### 2. Backend Setup
+
 ```bash
 cd nexus-learnai/backend
 python -m venv .venv
@@ -45,6 +49,7 @@ uvicorn app.main:app --reload
 ```
 
 ### 3. Frontend Setup
+
 ```bash
 cd nexus-learnai/frontend
 npm install
@@ -63,13 +68,8 @@ JWT_SECRET_KEY=your-super-secret-key
 ```
 
 ## 📈 Roadmap
+
 - [ ] Mobile App (React Native)
 - [ ] Multi-Modal AI Tutor (Voice & Image)
 - [ ] Advanced LTI 1.3 Integration
 - [ ] Decentralized Credentialing (Blockchain)
-
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-Built with ❤️ by the Nexus AI Team.
