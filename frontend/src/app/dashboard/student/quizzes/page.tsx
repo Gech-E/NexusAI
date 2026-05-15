@@ -34,8 +34,8 @@ export default function QuizzesPage() {
       if (!accessToken) return;
       try {
         const [quizzesRes, attemptsRes] = await Promise.all([
-          fetch('http://localhost:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
-          fetch('http://localhost:8000/api/v1/quizzes/me/attempts', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch('http://127.0.0.1:8000/api/v1/quizzes/me/attempts', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
         ]);
         if (quizzesRes.ok) setQuizzes(await quizzesRes.json());
         if (attemptsRes.ok) setAttempts(await attemptsRes.json());

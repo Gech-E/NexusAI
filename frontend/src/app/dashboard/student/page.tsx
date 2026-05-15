@@ -51,7 +51,7 @@ export default function StudentDashboard() {
     const fetchStats = async () => {
       if (!accessToken) return;
       try {
-        const response = await fetch('http://localhost:8000/api/v1/analytics/me/summary', {
+        const response = await fetch('http://127.0.0.1:8000/api/v1/analytics/me/summary', {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (response.ok) {

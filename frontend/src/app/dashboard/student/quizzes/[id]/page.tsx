@@ -60,7 +60,7 @@ export default function QuizTakingPage() {
     const startQuiz = async () => {
       if (!accessToken || !quizId) return;
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/quizzes/${quizId}/start`, {
+        const res = await fetch(`http://127.0.0.1:8000/api/v1/quizzes/${quizId}/start`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
@@ -100,7 +100,7 @@ export default function QuizTakingPage() {
     if (!accessToken || !quizData) return;
     setPhase('submitting');
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/quizzes/${quizId}/submit`, {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/quizzes/${quizId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify({ answers }),
