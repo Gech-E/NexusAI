@@ -35,7 +35,27 @@ class AITutorService:
             
         return self.embedder.compute_similarity(query_emb, document_emb)
 
-    def generate_response(self, student_id: str, query: str) -> str:
+    def validate_query(self, query: str) -> bool:
+        """
+        Validates the student's query to prevent invalid or meaningless input.
+        Rejects empty queries, queries that are too short, or queries containing only punctuation.
+        """
+        cleaned_query = query.strip()
+        if not cleaned_query:
+            return False
+            
+        # Check if the query is too short
+        if len(cleaned_query) < 2:
+            return False
+            
+        # Check if the query consists only of punctuation and special characters (e.g., "...", "???")
+        import re
+        if re.match(r'^[\W_]+$', cleaned_query):
+            return False
+            
+        return True
+
+    def generate_response(self, student_id: str, query: str, context: str = "") -> str:
         """
         Full RAG Pipeline Stub:
         1. Embed query
@@ -43,12 +63,26 @@ class AITutorService:
         3. Pass context and query to local quantized LLM (e.g. LLaMA.cpp)
         """
         query_embedding = self.embed_student_query(query)
+        
+        # System prompt ensuring the AI only answers based on the provided context
+        system_prompt = (
+            "You are an AI Tutor. Answer the user's question based strictly on the provided context. "
+            "If the context does not contain the answer, politely refuse to answer. Do not hallucinate."
+        )
+        
         # Mock semantic search and LLM generation
-        return "This is a simulated AI Tutor response based on your query. In production, this uses local quantized models."
+        return f"This is a simulated AI Tutor response answering your query: '{query}', strictly using retrieved context to prevent hallucination. In production, this uses local quantized models."
 
     async def get_tutor_response(self, query: str, user_id: str) -> str:
         """
         Public-facing method to get a response for the AI tutor.
         """
+        if not self.validate_query(query):
+            return "Invalid query. Please provide a clear and meaningful question."
+            
         # Here we would also fetch user context from the DB to personalize the response
-        return self.generate_response(user_id, query)
+        # Simulated context retrieval
+        simulated_context = "User context and knowledge base snippets go here."
+        
+        return self.generate_response(user_id, query, context=simulated_context)
+
