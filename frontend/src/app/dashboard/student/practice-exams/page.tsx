@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Target, Clock, Zap, CheckCircle2, XCircle, ArrowRight, BrainCircuit, Loader2 } from 'lucide-react';
+import { Target, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const mockExams = [
   { id: 1, title: 'Calculus Mid-Term Practice', subject: 'Mathematics', questions: 25, duration: '45 min', difficulty: 'Medium', completed: false },

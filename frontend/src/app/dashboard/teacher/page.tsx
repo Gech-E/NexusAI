@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, AlertTriangle, Activity, BrainCircuit, FileText, Loader2, TrendingUp, BookOpen, Target } from 'lucide-react';
+import { Users, AlertTriangle, Activity, FileText, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'next/navigation';
 import { StatCard } from '@/components/ui/StatCard';
@@ -84,7 +84,7 @@ export default function TeacherDashboard() {
       try {
         const newAlert: CVAlert = JSON.parse(event.data);
         setAlerts(prev => [newAlert, ...prev].slice(0, 10));
-      } catch (e) { /* ignore non-JSON */ }
+      } catch { /* ignore non-JSON */ }
     };
     return () => ws.close();
   }, [user]);

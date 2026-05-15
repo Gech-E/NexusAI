@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Search, TrendingUp, TrendingDown, Minus, AlertTriangle, BrainCircuit, Filter } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 const students = [
   { id: '1', name: 'Amara Osei', email: 'amara@school.edu', score: 92, trend: 'up', risk: 'low', quizzes: 18, lastActive: '2 min ago' },

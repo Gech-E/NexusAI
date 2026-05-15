@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Plus, Trash2, GripVertical, Loader2, CheckCircle2 } from 'lucide-react';
+import { FileText, Plus, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'next/navigation';
 
@@ -34,7 +34,7 @@ export default function CreateExam() {
     setQuestions(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const updateQuestion = (idx: number, field: string, value: any) => {
+  const updateQuestion = (idx: number, field: string, value: string | number | string[]) => {
     setQuestions(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q));
   };
 

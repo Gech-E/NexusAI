@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp } from 'lucide-react';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 
 const monthlyPerf = [
   { month: 'Sep', avg: 65 }, { month: 'Oct', avg: 68 }, { month: 'Nov', avg: 72 },

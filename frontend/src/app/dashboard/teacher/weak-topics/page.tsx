@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { AlertTriangle, TrendingDown, Users, BookOpen, Target } from 'lucide-react';
+import { AlertTriangle, TrendingDown } from 'lucide-react';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 

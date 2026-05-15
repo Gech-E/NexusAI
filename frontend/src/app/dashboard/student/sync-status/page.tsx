@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { WifiOff, Wifi, Cloud, CloudOff, RefreshCw, Check, AlertTriangle, Database, HardDrive } from 'lucide-react';
+import { WifiOff, Wifi, Cloud, RefreshCw, Check, AlertTriangle, Database, HardDrive } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 const syncItems = [
