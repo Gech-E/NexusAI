@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Server, Database, BrainCircuit, Wifi, HardDrive, Cpu, Activity, ShieldCheck } from 'lucide-react';
+import { Server, Database, BrainCircuit, Wifi, HardDrive, Activity, ShieldCheck } from 'lucide-react';
 
 const services = [
   { name: 'API Server (FastAPI)', status: 'healthy', uptime: '99.98%', cpu: '12%', mem: '340 MB', icon: Server, color: 'emerald' },

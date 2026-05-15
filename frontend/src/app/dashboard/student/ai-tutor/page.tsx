@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit, Send, Loader2, X, BookOpen, Sparkles, History } from 'lucide-react';
+import { BrainCircuit, Send, Loader2, Sparkles } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 const suggestedPrompts = [

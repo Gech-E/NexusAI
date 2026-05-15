@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Search, Shield, TrendingUp, Minus } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 const users = [
   { id: '1', name: 'Amara Osei', email: 'amara@aau.edu', role: 'student', status: 'active', lastLogin: '2 min ago', institution: 'AAU' },

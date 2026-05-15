@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Target, Clock, Zap, Loader2, BrainCircuit } from 'lucide-react';
-import { useAppStore } from '@/store/useAppStore';
+
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
 import {

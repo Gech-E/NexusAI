@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users, Building2, Activity, DollarSign, BrainCircuit, Server,
-  TrendingUp, ShieldCheck, Loader2, Globe, Zap, AlertTriangle
+  ShieldCheck, Loader2
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { StatCard } from '@/components/ui/StatCard';
@@ -50,7 +50,7 @@ const aiMetrics = [
 ];
 
 export default function AdminDashboard() {
-  const user = useAppStore(state => state.user);
+  const _user = useAppStore(state => state.user);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
