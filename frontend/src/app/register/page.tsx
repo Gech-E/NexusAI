@@ -30,7 +30,8 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: `${formData.firstName} ${formData.lastName}`,
-        school_slug: 'demo-school' // Mock slug for registration
+        role: formData.role,
+        school_slug: 'demo-school'
       };
 
       const registerRes = await fetch('http://localhost:8000/api/v1/auth/register', {
