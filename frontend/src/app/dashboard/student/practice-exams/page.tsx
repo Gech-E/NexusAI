@@ -1,22 +1,73 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Target, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Target, Clock, CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
+import { useRouter } from 'next/navigation';
 
-const mockExams = [
-  { id: 1, title: 'Calculus Mid-Term Practice', subject: 'Mathematics', questions: 25, duration: '45 min', difficulty: 'Medium', completed: false },
-  { id: 2, title: 'Physics Forces Quiz', subject: 'Physics', questions: 15, duration: '30 min', difficulty: 'Hard', completed: true, score: 82 },
-  { id: 3, title: 'Organic Chemistry Basics', subject: 'Chemistry', questions: 20, duration: '35 min', difficulty: 'Easy', completed: false },
-  { id: 4, title: 'English Grammar Review', subject: 'English', questions: 30, duration: '40 min', difficulty: 'Medium', completed: true, score: 91 },
-  { id: 5, title: 'Biology Cell Structure', subject: 'Biology', questions: 18, duration: '25 min', difficulty: 'Medium', completed: false },
-];
+interface QuizItem {
+  id: string;
+  title: string;
+  school_id: string;
+}
 
-const diffColor: Record<string, string> = { Easy: 'text-emerald-400 bg-emerald-500/10', Medium: 'text-amber-400 bg-amber-500/10', Hard: 'text-red-400 bg-red-500/10' };
+interface AttemptItem {
+  id: string;
+  quiz_id: string;
+  submitted_at: string | null;
+  result?: { score: number } | null;
+}
 
 export default function PracticeExams() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const router = useRouter();
+  const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
+  const [attempts, setAttempts] = useState<AttemptItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'available' | 'completed'>('all');
-  const filtered = mockExams.filter(e => filter === 'all' ? true : filter === 'completed' ? e.completed : !e.completed);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!accessToken) return;
+      try {
+        const [quizRes, attRes] = await Promise.all([
+          fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch('http://127.0.0.1:8000/api/v1/quizzes/me/attempts', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+        ]);
+        if (quizRes.ok) setQuizzes(await quizRes.json());
+        if (attRes.ok) setAttempts(await attRes.json());
+      } catch (error) {
+        console.error('Failed to fetch practice exams:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [accessToken]);
+
+  // Build exam list with completion status
+  const completedQuizIds = new Set(
+    attempts.filter(a => a.submitted_at).map(a => a.quiz_id)
+  );
+  const attemptScoreMap: Record<string, number> = {};
+  attempts.forEach(a => {
+    if (a.submitted_at && a.result) {
+      const score = typeof a.result.score === 'number' ? Math.round(a.result.score * 100) : a.result.score;
+      attemptScoreMap[a.quiz_id] = score;
+    }
+  });
+
+  const exams = quizzes.map(q => ({
+    id: q.id,
+    title: q.title,
+    completed: completedQuizIds.has(q.id),
+    score: attemptScoreMap[q.id] || 0,
+  }));
+
+  const filtered = exams.filter(e => filter === 'all' ? true : filter === 'completed' ? e.completed : !e.completed);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-cyan-400 animate-spin" /></div>;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -33,6 +84,14 @@ export default function PracticeExams() {
         ))}
       </div>
 
+      {filtered.length === 0 && (
+        <div className="text-center py-16 text-slate-500">
+          <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-lg font-medium text-slate-400">No exams found</p>
+          <p className="text-sm">Check back when your teacher creates new quizzes.</p>
+        </div>
+      )}
+
       <div className="space-y-4">
         {filtered.map((exam, idx) => (
           <motion.div key={exam.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.06 }}
@@ -42,12 +101,13 @@ export default function PracticeExams() {
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-1 flex-wrap">
                   <h3 className="text-white font-medium">{exam.title}</h3>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${diffColor[exam.difficulty]}`}>{exam.difficulty}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${exam.completed ? 'text-emerald-400 bg-emerald-500/10' : 'text-amber-400 bg-amber-500/10'}`}>
+                    {exam.completed ? 'Completed' : 'Available'}
+                  </span>
                 </div>
-                <p className="text-slate-500 text-sm">{exam.subject}</p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                  <span className="flex items-center gap-1"><Target className="w-3 h-3" /> {exam.questions} questions</span>
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {exam.duration}</span>
+                  <span className="flex items-center gap-1"><Target className="w-3 h-3" /> Practice</span>
+                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> No time limit</span>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -57,7 +117,8 @@ export default function PracticeExams() {
                     <p className="text-xs text-slate-500 mt-1">Completed</p>
                   </div>
                 ) : (
-                  <button className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold px-5 py-2.5 rounded-full text-sm flex items-center gap-2 transition-colors">
+                  <button onClick={() => router.push(`/dashboard/student/quizzes/${exam.id}`)}
+                    className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold px-5 py-2.5 rounded-full text-sm flex items-center gap-2 transition-colors">
                     Start <ArrowRight className="w-4 h-4" />
                   </button>
                 )}
