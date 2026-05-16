@@ -43,7 +43,7 @@ export default function Revenue() {
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
               <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
-              <Tooltip contentStyle={tt} formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']} />
+              <Tooltip contentStyle={tt} formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']} />
               <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#rvGrad)" />
             </AreaChart>
           </ResponsiveContainer>
