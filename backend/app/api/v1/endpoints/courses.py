@@ -98,3 +98,113 @@ async def enroll_in_course(course_id: UUID, db: DbSession, user: CurrentUser) ->
     db.add(enrollment)
     await db.commit()
     return {"status": "enrolled", "course_id": str(course_id)}
+
+
+# ─────────────────────────────────────────────
+# Teacher courses, course detail, progress, delete
+# ─────────────────────────────────────────────
+
+from sqlalchemy import func
+
+
+@router.get("/me/teaching")
+async def my_teaching_courses(
+    db: DbSession,
+    user: CurrentUser,
+) -> list[dict]:
+    """Return courses where the current user is the teacher."""
+    result = await db.execute(
+        select(Course)
+        .where(Course.teacher_user_id == user.id)
+        .order_by(Course.created_at.desc())
+    )
+    courses = result.scalars().all()
+    output = []
+    for c in courses:
+        # Student count
+        enroll_q = await db.execute(
+            select(func.count(Enrollment.id)).where(Enrollment.course_id == c.id)
+        )
+        student_count = enroll_q.scalar() or 0
+        output.append({
+            "id": str(c.id),
+            "title": c.title,
+            "subject": c.subject,
+            "description": c.description,
+            "school_id": str(c.school_id),
+            "students": student_count,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return output
+
+
+@router.get("/{course_id}")
+async def get_course_detail(course_id: UUID, db: DbSession, user: CurrentUser) -> dict:
+    """Get a single course with enrollment and quiz counts."""
+    course = await db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    # Enrollment count
+    enroll_q = await db.execute(
+        select(func.count(Enrollment.id)).where(Enrollment.course_id == course_id)
+    )
+    enrollment_count = enroll_q.scalar() or 0
+
+    # Quiz count
+    from app.infrastructure.models.assessment import Quiz
+    quiz_q = await db.execute(
+        select(func.count(Quiz.id)).where(Quiz.course_id == course_id)
+    )
+    quiz_count = quiz_q.scalar() or 0
+
+    return {
+        "id": str(course.id),
+        "title": course.title,
+        "subject": course.subject,
+        "description": course.description,
+        "code": course.code,
+        "school_id": str(course.school_id),
+        "teacher_user_id": str(course.teacher_user_id) if course.teacher_user_id else None,
+        "enrollment_count": enrollment_count,
+        "quiz_count": quiz_count,
+        "created_at": course.created_at.isoformat() if course.created_at else None,
+    }
+
+
+class ProgressUpdate(BaseModel):
+    progress_pct: float = Field(ge=0.0, le=100.0)
+
+
+@router.put("/{course_id}/progress")
+async def update_progress(
+    course_id: UUID, payload: ProgressUpdate, db: DbSession, user: CurrentUser
+) -> dict:
+    """Update a student's progress in a course."""
+    result = await db.execute(
+        select(Enrollment).where(
+            Enrollment.student_user_id == user.id,
+            Enrollment.course_id == course_id,
+        )
+    )
+    enrollment = result.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
+
+    enrollment.progress_pct = payload.progress_pct
+    await db.commit()
+    return {"course_id": str(course_id), "progress_pct": enrollment.progress_pct}
+
+
+@router.delete(
+    "/{course_id}",
+    dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
+)
+async def delete_course(course_id: UUID, db: DbSession) -> dict:
+    """Delete a course (teacher/admin only)."""
+    course = await db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    await db.delete(course)
+    await db.commit()
+    return {"status": "deleted", "course_id": str(course_id)}

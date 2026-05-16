@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import CurrentUser, DbSession, require_roles
 from app.infrastructure.models.assessment import Question, Quiz
+from app.infrastructure.models.institution import School
 from app.infrastructure.models.user import UserRole
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
@@ -45,6 +46,17 @@ async def list_quizzes(db: DbSession, user: CurrentUser) -> list[Quiz]:
 
 @router.post("", response_model=QuizRead, dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))])
 async def create_quiz(payload: QuizCreate, db: DbSession, user: CurrentUser) -> Quiz:
+    # Ensure school exists to prevent IntegrityError in demo environment
+    school_res = await db.execute(select(School).where(School.id == payload.school_id))
+    if not school_res.scalar_one_or_none():
+        demo_school = School(
+            id=payload.school_id,
+            name="Default Demo School",
+            slug="default-demo-school",
+        )
+        db.add(demo_school)
+        await db.flush()
+
     quiz = Quiz(
         school_id=payload.school_id,
         course_id=payload.course_id,
@@ -140,16 +152,29 @@ async def start_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
 
-    # Create attempt
-    attempt = QuizAttempt(
-        quiz_id=quiz.id,
-        student_user_id=user.id,
-        started_at=datetime.now(tz=UTC),
-        answers={},
+    # Reuse an existing unsubmitted attempt if one exists (prevents duplicates from race conditions)
+    existing_q = await db.execute(
+        select(QuizAttempt)
+        .where(
+            QuizAttempt.quiz_id == quiz.id,
+            QuizAttempt.student_user_id == user.id,
+            QuizAttempt.submitted_at.is_(None),
+        )
+        .order_by(QuizAttempt.created_at.desc())
+        .limit(1)
     )
-    db.add(attempt)
-    await db.commit()
-    await db.refresh(attempt)
+    attempt = existing_q.scalars().first()
+
+    if not attempt:
+        attempt = QuizAttempt(
+            quiz_id=quiz.id,
+            student_user_id=user.id,
+            started_at=datetime.now(tz=UTC),
+            answers={},
+        )
+        db.add(attempt)
+        await db.commit()
+        await db.refresh(attempt)
 
     # Return questions without correct_index
     questions_out = [
@@ -186,8 +211,9 @@ async def submit_quiz(
             QuizAttempt.submitted_at.is_(None),
         )
         .order_by(QuizAttempt.created_at.desc())
+        .limit(1)
     )
-    attempt = attempt_q.scalar_one_or_none()
+    attempt = attempt_q.scalars().first()
     if not attempt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -243,5 +269,182 @@ async def submit_quiz(
         "total_questions": total,
         "percentage": percentage,
         "feedback": feedback_list,
+    }
+
+
+# ─────────────────────────────────────────────
+# Quiz detail, delete, results, and student stats
+# ─────────────────────────────────────────────
+
+from sqlalchemy import func
+
+
+@router.get("/me/stats")
+async def my_quiz_stats(db: DbSession, user: CurrentUser) -> dict:
+    """Aggregate quiz statistics for the current student."""
+    # Total completed attempts
+    total_q = await db.execute(
+        select(func.count(QuizAttempt.id)).where(
+            QuizAttempt.student_user_id == user.id,
+            QuizAttempt.submitted_at.isnot(None),
+        )
+    )
+    total = total_q.scalar() or 0
+
+    # Average score
+    avg_q = await db.execute(
+        select(func.avg(QuizResult.score))
+        .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+        .where(QuizAttempt.student_user_id == user.id)
+    )
+    avg_score = float(avg_q.scalar() or 0)
+
+    # Best score
+    best_q = await db.execute(
+        select(func.max(QuizResult.score))
+        .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+        .where(QuizAttempt.student_user_id == user.id)
+    )
+    best_score = float(best_q.scalar() or 0)
+
+    # Pending attempts
+    pending_q = await db.execute(
+        select(func.count(QuizAttempt.id)).where(
+            QuizAttempt.student_user_id == user.id,
+            QuizAttempt.submitted_at.is_(None),
+        )
+    )
+    pending = pending_q.scalar() or 0
+
+    return {
+        "total_completed": total,
+        "average_score": round(avg_score * 100, 1),
+        "best_score": round(best_score * 100, 1),
+        "pending_attempts": pending,
+    }
+
+
+@router.get("/{quiz_id}")
+async def get_quiz_detail(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
+    """Get full quiz detail including questions (for teacher review)."""
+    result = await db.execute(
+        select(Quiz)
+        .where(Quiz.id == quiz_id)
+        .options(selectinload(Quiz.questions))
+    )
+    quiz = result.scalar_one_or_none()
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    # Count attempts
+    attempt_count_q = await db.execute(
+        select(func.count(QuizAttempt.id)).where(QuizAttempt.quiz_id == quiz_id)
+    )
+    attempt_count = attempt_count_q.scalar() or 0
+
+    # Average score
+    avg_q = await db.execute(
+        select(func.avg(QuizResult.score))
+        .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+        .where(QuizAttempt.quiz_id == quiz_id)
+    )
+    avg_score = float(avg_q.scalar() or 0)
+
+    return {
+        "id": str(quiz.id),
+        "title": quiz.title,
+        "description": quiz.description,
+        "school_id": str(quiz.school_id),
+        "course_id": str(quiz.course_id) if quiz.course_id else None,
+        "created_by_user_id": str(quiz.created_by_user_id) if quiz.created_by_user_id else None,
+        "adaptive_policy": quiz.adaptive_policy,
+        "created_at": quiz.created_at.isoformat() if quiz.created_at else None,
+        "total_questions": len(quiz.questions),
+        "total_attempts": attempt_count,
+        "average_score": round(avg_score * 100, 1),
+        "questions": [
+            {
+                "id": str(q.id),
+                "prompt": q.prompt,
+                "choices": q.choices,
+                "correct_index": q.correct_index,
+                "difficulty": q.difficulty,
+                "topic_tags": q.topic_tags,
+            }
+            for q in quiz.questions
+        ],
+    }
+
+
+@router.delete(
+    "/{quiz_id}",
+    dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
+)
+async def delete_quiz(quiz_id: UUID, db: DbSession) -> dict:
+    """Delete a quiz and all its questions/attempts (cascade)."""
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+    await db.delete(quiz)
+    await db.commit()
+    return {"status": "deleted", "quiz_id": str(quiz_id)}
+
+
+@router.get(
+    "/{quiz_id}/results",
+    dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
+)
+async def quiz_results(quiz_id: UUID, db: DbSession) -> dict:
+    """Get all student results for a specific quiz (teacher view)."""
+    # Verify quiz exists
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    # Get all submitted attempts with results
+    from app.infrastructure.models.user import User as UserModel
+    attempts_q = await db.execute(
+        select(QuizAttempt)
+        .options(selectinload(QuizAttempt.result))
+        .where(
+            QuizAttempt.quiz_id == quiz_id,
+            QuizAttempt.submitted_at.isnot(None),
+        )
+        .order_by(QuizAttempt.submitted_at.desc())
+    )
+    attempts = attempts_q.scalars().all()
+
+    # Get user names
+    student_ids = list({a.student_user_id for a in attempts})
+    student_names = {}
+    if student_ids:
+        users_q = await db.execute(
+            select(UserModel).where(UserModel.id.in_(student_ids))
+        )
+        for u in users_q.scalars().all():
+            student_names[u.id] = u.full_name
+
+    results = []
+    for a in attempts:
+        results.append({
+            "attempt_id": str(a.id),
+            "student_id": str(a.student_user_id),
+            "student_name": student_names.get(a.student_user_id, "Unknown"),
+            "score": round(a.result.score * 100, 1) if a.result else 0,
+            "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None,
+        })
+
+    # Summary
+    scores = [a.result.score for a in attempts if a.result]
+    avg_score = sum(scores) / len(scores) if scores else 0
+
+    return {
+        "quiz_id": str(quiz_id),
+        "quiz_title": quiz.title,
+        "total_submissions": len(attempts),
+        "average_score": round(avg_score * 100, 1),
+        "highest_score": round(max(scores) * 100, 1) if scores else 0,
+        "lowest_score": round(min(scores) * 100, 1) if scores else 0,
+        "results": results,
     }
 
