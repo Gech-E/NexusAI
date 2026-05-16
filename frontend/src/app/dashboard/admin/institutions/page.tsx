@@ -1,17 +1,11 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Users, TrendingUp, MapPin, Plus, Settings } from 'lucide-react';
+import { Building2, Users, TrendingUp, MapPin, Plus, Settings, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 
-const institutions = [
-  { id: 1, name: 'Addis Ababa University', location: 'Addis Ababa, Ethiopia', students: 420, teachers: 38, avgScore: 76, status: 'active', color: 'cyan' },
-  { id: 2, name: 'University of Lagos', location: 'Lagos, Nigeria', students: 310, teachers: 28, avgScore: 72, status: 'active', color: 'emerald' },
-  { id: 3, name: 'University of Nairobi', location: 'Nairobi, Kenya', students: 185, teachers: 22, avgScore: 80, status: 'active', color: 'purple' },
-  { id: 4, name: 'Makerere University', location: 'Kampala, Uganda', students: 95, teachers: 14, avgScore: 68, status: 'active', color: 'amber' },
-  { id: 5, name: 'Delhi Public School', location: 'New Delhi, India', students: 73, teachers: 12, avgScore: 82, status: 'pending', color: 'blue' },
-];
-
-const colors: Record<string, { bg: string; border: string; text: string }> = {
+const colorMap: Record<string, { bg: string; border: string; text: string }> = {
   cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400' },
   emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
   purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400' },
@@ -19,7 +13,42 @@ const colors: Record<string, { bg: string; border: string; text: string }> = {
   blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
 };
 
+interface Institution {
+  id: string;
+  name: string;
+  slug: string;
+  location: string;
+  students: number;
+  teachers: number;
+  avgScore: number;
+  status: string;
+  color: string;
+}
+
 export default function Institutions() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInstitutions = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/admin/institutions', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setInstitutions(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch institutions:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInstitutions();
+  }, [accessToken]);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-purple-400 animate-spin" /></div>;
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-start">
@@ -32,9 +61,17 @@ export default function Institutions() {
         </button>
       </motion.div>
 
+      {institutions.length === 0 && (
+        <div className="text-center py-16 text-slate-500">
+          <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-lg font-medium text-slate-400">No institutions yet</p>
+          <p className="text-sm">Add your first institution to get started.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {institutions.map((inst, idx) => {
-          const c = colors[inst.color];
+          const c = colorMap[inst.color] || colorMap.cyan;
           return (
             <motion.div key={inst.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}
               className="glassmorphism p-6 rounded-2xl hover:border-slate-600 transition-all cursor-pointer group"

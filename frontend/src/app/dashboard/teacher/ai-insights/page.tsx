@@ -1,28 +1,62 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit, TrendingUp, AlertTriangle, Lightbulb, Users, Target, BookOpen } from 'lucide-react';
-import { ChartCard } from '@/components/ui/ChartCard';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { BrainCircuit, TrendingUp, AlertTriangle, Lightbulb, Users, Target, BookOpen, Loader2, Info, CheckCircle2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 
-const topicPerformance = [
-  { topic: 'Algebra', avg: 78 }, { topic: 'Geometry', avg: 62 },
-  { topic: 'Calculus', avg: 55 }, { topic: 'Statistics', avg: 82 },
-  { topic: 'Trig', avg: 48 }, { topic: 'Physics', avg: 71 },
-];
+const iconMap: Record<string, React.ElementType> = {
+  warning: AlertTriangle,
+  alert: AlertTriangle,
+  info: Info,
+  success: CheckCircle2,
+};
+const colorMap: Record<string, string> = {
+  warning: 'amber',
+  alert: 'red',
+  info: 'cyan',
+  success: 'emerald',
+};
 
-const insights = [
-  { icon: AlertTriangle, color: 'amber', title: 'Struggling Group Detected', desc: '7 students scored below 50% on Trigonometry. Consider a review session.' },
-  { icon: TrendingUp, color: 'emerald', title: 'Positive Trend', desc: 'Class average improved 8.2% over the last 3 weeks in Algebra.' },
-  { icon: Lightbulb, color: 'cyan', title: 'Recommended Action', desc: 'Assign practice problems on Calculus derivatives — 60% of students show gaps.' },
-  { icon: Users, color: 'purple', title: 'Peer Learning Opportunity', desc: 'Pair top performers (Amara, Grace) with at-risk students for study groups.' },
-  { icon: Target, color: 'blue', title: 'Exam Prediction', desc: 'AI predicts 72% class pass rate for upcoming mid-term. Focus on weak areas.' },
-  { icon: BookOpen, color: 'pink', title: 'Content Gap', desc: 'No exercises available for "Integration by Parts" — create new quiz questions.' },
-];
+interface Insight {
+  type: string;
+  title: string;
+  description: string;
+}
 
-const ttStyle = { backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' };
+interface InsightsData {
+  insights: Insight[];
+  summary: {
+    total_students: number;
+    avg_performance: number;
+    at_risk_count: number;
+  };
+}
 
 export default function AIInsights() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [data, setData] = useState<InsightsData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInsights = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/ai-insights', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setData(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch insights:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInsights();
+  }, [accessToken]);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-emerald-400 animate-spin" /></div>;
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -32,40 +66,59 @@ export default function AIInsights() {
         <p className="text-slate-400 text-sm">Machine learning-powered analysis of your classroom data</p>
       </motion.div>
 
-      <ChartCard title="Topic Performance Heatmap" subtitle="Average scores across topics" delay={0.1}>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={topicPerformance}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis dataKey="topic" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
-            <Tooltip contentStyle={ttStyle} />
-            <Bar dataKey="avg" radius={[6, 6, 0, 0]} barSize={36}>
-              {topicPerformance.map((entry, idx) => (
-                <motion.rect key={idx} fill={entry.avg >= 70 ? '#10b981' : entry.avg >= 50 ? '#f59e0b' : '#ef4444'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
+      {/* Summary Cards */}
+      {data?.summary && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="glassmorphism p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-2">
+              <Users className="w-5 h-5 text-blue-400" />
+              <span className="text-xs text-slate-500">Total Students</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{data.summary.total_students}</p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+            className="glassmorphism p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+              <span className="text-xs text-slate-500">Avg Performance</span>
+            </div>
+            <p className={`text-2xl font-bold ${data.summary.avg_performance >= 60 ? 'text-emerald-400' : 'text-amber-400'}`}>{data.summary.avg_performance}%</p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+            className="glassmorphism p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <span className="text-xs text-slate-500">At Risk Students</span>
+            </div>
+            <p className={`text-2xl font-bold ${data.summary.at_risk_count > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{data.summary.at_risk_count}</p>
+          </motion.div>
+        </div>
+      )}
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+      {/* Insights */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
         <h3 className="text-white font-semibold mb-4">AI-Generated Insights</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {insights.map((insight, idx) => (
-            <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 + idx * 0.06 }}
-              className="glassmorphism p-5 rounded-2xl hover:border-slate-600 transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 bg-${insight.color}-500/10 border border-${insight.color}-500/20 rounded-xl flex items-center justify-center shrink-0`}>
-                  <insight.icon className={`w-5 h-5 text-${insight.color}-400`} />
+          {(data?.insights || []).map((insight, idx) => {
+            const Icon = iconMap[insight.type] || Lightbulb;
+            const color = colorMap[insight.type] || 'cyan';
+            return (
+              <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + idx * 0.06 }}
+                className="glassmorphism p-5 rounded-2xl hover:border-slate-600 transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 bg-${color}-500/10 border border-${color}-500/20 rounded-xl flex items-center justify-center shrink-0`}>
+                    <Icon className={`w-5 h-5 text-${color}-400`} />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-medium text-sm mb-1">{insight.title}</h4>
+                    <p className="text-slate-400 text-xs leading-relaxed">{insight.description}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-white font-medium text-sm mb-1">{insight.title}</h4>
-                  <p className="text-slate-400 text-xs leading-relaxed">{insight.desc}</p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       </motion.div>
     </div>

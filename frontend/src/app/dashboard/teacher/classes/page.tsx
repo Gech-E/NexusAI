@@ -1,23 +1,51 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, Users, BookOpen, TrendingUp, Plus, Settings } from 'lucide-react';
+import { GraduationCap, Users, BookOpen, TrendingUp, Plus, Settings, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 
-const classes = [
-  { id: 1, name: 'Grade 10A — Mathematics', students: 32, avgScore: 78, courses: 4, color: 'cyan' },
-  { id: 2, name: 'Grade 10B — Mathematics', students: 28, avgScore: 72, courses: 4, color: 'emerald' },
-  { id: 3, name: 'Grade 11A — Physics', students: 25, avgScore: 82, courses: 3, color: 'purple' },
-  { id: 4, name: 'Grade 11B — Chemistry', students: 30, avgScore: 68, courses: 5, color: 'amber' },
-];
-
-const colors: Record<string, { bg: string; border: string; text: string }> = {
+const colorMap: Record<string, { bg: string; border: string; text: string }> = {
   cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400' },
   emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
   purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400' },
   amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
 };
 
+interface ClassItem {
+  id: string;
+  name: string;
+  students: number;
+  avgScore: number;
+  courses: number;
+  color: string;
+}
+
 export default function Classes() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/class-summary', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setClasses(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch classes:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchClasses();
+  }, [accessToken]);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-emerald-400 animate-spin" /></div>;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-start">
@@ -30,9 +58,17 @@ export default function Classes() {
         </button>
       </motion.div>
 
+      {classes.length === 0 && !loading && (
+        <div className="text-center py-16 text-slate-500">
+          <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-lg font-medium text-slate-400">No classes yet</p>
+          <p className="text-sm">Create courses and quizzes to see class analytics here.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {classes.map((cls, idx) => {
-          const c = colors[cls.color];
+          const c = colorMap[cls.color] || colorMap.cyan;
           return (
             <motion.div key={cls.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}
               className="glassmorphism p-6 rounded-2xl hover:border-slate-600 transition-all cursor-pointer group"
@@ -56,7 +92,7 @@ export default function Classes() {
                   <p className={`text-lg font-bold ${cls.avgScore >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>{cls.avgScore}%</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 flex items-center gap-1"><BookOpen className="w-3 h-3" /> Courses</p>
+                  <p className="text-xs text-slate-500 flex items-center gap-1"><BookOpen className="w-3 h-3" /> Quizzes</p>
                   <p className="text-lg font-bold text-white">{cls.courses}</p>
                 </div>
               </div>

@@ -1,27 +1,48 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, TrendingDown } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
-const weakTopics = [
-  { topic: 'Trigonometric Identities', avgScore: 42, students: 18, trend: -8, subject: 'Mathematics' },
-  { topic: 'Integration by Parts', avgScore: 48, students: 15, trend: -5, subject: 'Calculus' },
-  { topic: 'Organic Reactions', avgScore: 51, students: 12, trend: -3, subject: 'Chemistry' },
-  { topic: 'Newton\'s Third Law', avgScore: 55, students: 10, trend: +2, subject: 'Physics' },
-  { topic: 'Conditional Probability', avgScore: 58, students: 8, trend: -1, subject: 'Statistics' },
-];
-
-const compData = [
-  { topic: 'Trig ID', before: 38, after: 42 }, { topic: 'Integration', before: 45, after: 48 },
-  { topic: 'Org. Chem', before: 49, after: 51 }, { topic: 'Newton 3', before: 50, after: 55 },
-  { topic: 'Cond. Prob', before: 56, after: 58 },
-];
-
 const ttStyle = { backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' };
 
+interface WeakTopic {
+  topic: string;
+  avgScore: number;
+  students: number;
+  trend: number;
+  subject: string;
+}
+
 export default function WeakTopics() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [topics, setTopics] = useState<WeakTopic[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTopics = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/weak-topics', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setTopics(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch weak topics:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTopics();
+  }, [accessToken]);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-emerald-400 animate-spin" /></div>;
+
+  const chartData = topics.map(t => ({ topic: t.topic.length > 12 ? t.topic.slice(0, 12) + '…' : t.topic, score: t.avgScore }));
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -29,21 +50,30 @@ export default function WeakTopics() {
         <p className="text-slate-400 text-sm">AI-identified areas where students need the most help</p>
       </motion.div>
 
-      <ChartCard title="Before vs After Intervention" subtitle="Score comparison after targeted review sessions" delay={0.1}>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={compData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis dataKey="topic" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
-            <Tooltip contentStyle={ttStyle} />
-            <Bar dataKey="before" fill="#64748b" radius={[4, 4, 0, 0]} barSize={20} name="Before" />
-            <Bar dataKey="after" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20} name="After" />
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
+      {chartData.length > 0 && (
+        <ChartCard title="Topic Score Overview" subtitle="Lowest scoring topics across all quizzes" delay={0.1}>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="topic" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
+              <Tooltip contentStyle={ttStyle} />
+              <Bar dataKey="score" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={28} name="Avg Score %" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+
+      {topics.length === 0 && (
+        <div className="text-center py-16 text-slate-500">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-lg font-medium text-slate-400">No weak topics detected</p>
+          <p className="text-sm">Students need to complete quizzes with topic tags for analysis.</p>
+        </div>
+      )}
 
       <div className="space-y-4">
-        {weakTopics.map((topic, idx) => (
+        {topics.map((topic, idx) => (
           <motion.div key={topic.topic} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + idx * 0.06 }}
             className="glassmorphism p-5 rounded-2xl hover:border-slate-600 transition-all"
           >

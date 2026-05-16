@@ -1,19 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-
-const students = [
-  { id: '1', name: 'Amara Osei', email: 'amara@school.edu', score: 92, trend: 'up', risk: 'low', quizzes: 18, lastActive: '2 min ago' },
-  { id: '2', name: 'Kwame Mensah', email: 'kwame@school.edu', score: 78, trend: 'up', risk: 'low', quizzes: 14, lastActive: '15 min ago' },
-  { id: '3', name: 'Fatima Hassan', email: 'fatima@school.edu', score: 65, trend: 'down', risk: 'medium', quizzes: 11, lastActive: '1 hr ago' },
-  { id: '4', name: 'Daniel Tadesse', email: 'daniel@school.edu', score: 54, trend: 'down', risk: 'high', quizzes: 8, lastActive: '3 hrs ago' },
-  { id: '5', name: 'Grace Wanjiku', email: 'grace@school.edu', score: 88, trend: 'stable', risk: 'low', quizzes: 16, lastActive: '5 min ago' },
-  { id: '6', name: 'Yusuf Ali', email: 'yusuf@school.edu', score: 71, trend: 'up', risk: 'medium', quizzes: 12, lastActive: '30 min ago' },
-  { id: '7', name: 'Ngozi Eze', email: 'ngozi@school.edu', score: 43, trend: 'down', risk: 'high', quizzes: 5, lastActive: '2 days ago' },
-  { id: '8', name: 'Samuel Kipchoge', email: 'samuel@school.edu', score: 85, trend: 'stable', risk: 'low', quizzes: 15, lastActive: '10 min ago' },
-];
+import { Search, TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 
 const trendIcon: Record<string, React.ReactNode> = {
   up: <TrendingUp className="w-4 h-4 text-emerald-400" />,
@@ -27,15 +17,48 @@ const riskBadge: Record<string, string> = {
   high: 'text-red-400 bg-red-500/10',
 };
 
+interface Student {
+  id: string;
+  name: string;
+  email: string;
+  score: number;
+  trend: string;
+  risk: string;
+  quizzes: number;
+  lastActive: string;
+}
+
 export default function TeacherStudents() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [riskFilter, setRiskFilter] = useState<string>('all');
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/students', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setStudents(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch students:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStudents();
+  }, [accessToken]);
 
   const filtered = students.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase());
     const matchRisk = riskFilter === 'all' || s.risk === riskFilter;
     return matchSearch && matchRisk;
   });
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-emerald-400 animate-spin" /></div>;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">

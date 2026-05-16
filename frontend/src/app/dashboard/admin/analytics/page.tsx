@@ -1,27 +1,53 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, Users, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Activity, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/useAppStore';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
-
-const engagementData = [
-  { day: 'Mon', logins: 320, queries: 890 }, { day: 'Tue', logins: 410, queries: 1120 },
-  { day: 'Wed', logins: 380, queries: 980 }, { day: 'Thu', logins: 450, queries: 1340 },
-  { day: 'Fri', logins: 390, queries: 1050 }, { day: 'Sat', logins: 210, queries: 560 },
-  { day: 'Sun', logins: 180, queries: 420 },
-];
-
-const coursePerformance = [
-  { course: 'Math 10A', avg: 78 }, { course: 'Physics 11', avg: 72 },
-  { course: 'Chem 10', avg: 68 }, { course: 'Bio 11', avg: 82 },
-  { course: 'English 10', avg: 85 }, { course: 'History 11', avg: 74 },
-];
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const tt = { backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' };
+const COLORS = ['#06b6d4', '#10b981', '#8b5cf6', '#f59e0b'];
+
+interface AnalyticsData {
+  users_by_role: Record<string, number>;
+  total_users: number;
+  total_institutions: number;
+  total_courses: number;
+  total_attempts: number;
+  completed_attempts: number;
+  completion_rate: number;
+  avg_score: number;
+}
 
 export default function AdminAnalytics() {
+  const accessToken = useAppStore(state => state.accessToken);
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/v1/admin/analytics', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.ok) setData(await res.json());
+      } catch (error) {
+        console.error('Failed to fetch analytics:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAnalytics();
+  }, [accessToken]);
+
+  if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-purple-400 animate-spin" /></div>;
+
+  const rolePieData = data ? Object.entries(data.users_by_role).map(([name, value]) => ({ name, value })) : [];
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -30,37 +56,44 @@ export default function AdminAnalytics() {
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Daily Active Users" value="342" icon={Users} iconColor="text-blue-400" iconBg="bg-blue-500/10 border-blue-500/20" trend={{ value: '+12% vs yesterday', positive: true }} delay={0.1} />
-        <StatCard title="AI Queries Today" value="4,291" icon={Activity} iconColor="text-cyan-400" iconBg="bg-cyan-500/10 border-cyan-500/20" subtitle="Avg 12.5 per user" delay={0.15} />
-        <StatCard title="Avg Session" value="28 min" icon={TrendingUp} iconColor="text-emerald-400" iconBg="bg-emerald-500/10 border-emerald-500/20" trend={{ value: '+3 min vs last week', positive: true }} delay={0.2} />
-        <StatCard title="Completion Rate" value="76%" icon={BarChart3} iconColor="text-purple-400" iconBg="bg-purple-500/10 border-purple-500/20" trend={{ value: '+5% this month', positive: true }} delay={0.25} />
+        <StatCard title="Total Users" value={data?.total_users || 0} icon={Users} iconColor="text-blue-400" iconBg="bg-blue-500/10 border-blue-500/20" subtitle={`${data?.total_institutions || 0} institutions`} delay={0.1} />
+        <StatCard title="Total Attempts" value={data?.total_attempts || 0} icon={Activity} iconColor="text-cyan-400" iconBg="bg-cyan-500/10 border-cyan-500/20" subtitle={`${data?.completed_attempts || 0} completed`} delay={0.15} />
+        <StatCard title="Avg Score" value={`${data?.avg_score || 0}%`} icon={TrendingUp} iconColor="text-emerald-400" iconBg="bg-emerald-500/10 border-emerald-500/20" subtitle="Across all quizzes" delay={0.2} />
+        <StatCard title="Completion Rate" value={`${data?.completion_rate || 0}%`} icon={BarChart3} iconColor="text-purple-400" iconBg="bg-purple-500/10 border-purple-500/20" subtitle={`${data?.total_courses || 0} courses`} delay={0.25} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="Weekly Engagement" subtitle="Logins and AI queries per day" delay={0.3}>
+        <ChartCard title="Users by Role" subtitle="Distribution of platform users" delay={0.3}>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={engagementData}>
-              <defs>
-                <linearGradient id="loginGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} /><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} /></linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="day" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+            <PieChart>
+              <Pie data={rolePieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
+                {rolePieData.map((_entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend
+                formatter={(value) => <span className="text-slate-300 text-xs">{value}</span>}
+                iconType="circle"
+                iconSize={8}
+              />
               <Tooltip contentStyle={tt} />
-              <Area type="monotone" dataKey="logins" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#loginGrad)" name="Logins" />
-              <Area type="monotone" dataKey="queries" stroke="#06b6d4" strokeWidth={1.5} fillOpacity={0} strokeDasharray="4 4" name="AI Queries" />
-            </AreaChart>
+            </PieChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Course Performance" subtitle="Average scores across all institutions" delay={0.35}>
+        <ChartCard title="Platform Summary" subtitle="Key metrics overview" delay={0.35}>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={coursePerformance}>
+            <BarChart data={[
+              { metric: 'Users', value: data?.total_users || 0 },
+              { metric: 'Courses', value: data?.total_courses || 0 },
+              { metric: 'Attempts', value: data?.total_attempts || 0 },
+              { metric: 'Completed', value: data?.completed_attempts || 0 },
+            ]}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="course" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
+              <XAxis dataKey="metric" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={tt} />
-              <Bar dataKey="avg" fill="#06b6d4" radius={[6, 6, 0, 0]} barSize={32} name="Average %" />
+              <Bar dataKey="value" fill="#8b5cf6" radius={[6, 6, 0, 0]} barSize={36} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
