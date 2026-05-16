@@ -1,0 +1,16 @@
+﻿   Γû▓ Next.js 15.5.18
+
+   Creating an optimized production build ...
+npx : uncaughtException [Error: EPERM: operation not permitted, open 
+'C:\Users\Gech\Desktop\LMS\nexus-learnai\frontend\.next\trace'] {
+At line:1 char:1
++ npx next build 2>&1 | Out-File -FilePath build_output.txt -Encoding u ...
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (uncaughtExcepti....next\trace'] {:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'open',
+  path: 'C:\\Users\\Gech\\Desktop\\LMS\\nexus-learnai\\frontend\\.next\\trace'
+}

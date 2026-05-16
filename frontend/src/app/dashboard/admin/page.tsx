@@ -50,7 +50,6 @@ const aiMetrics = [
 ];
 
 export default function AdminDashboard() {
-  const _user = useAppStore(state => state.user);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -143,7 +142,7 @@ export default function AdminDashboard() {
               <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' }}
-                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
               />
               <Area type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#revGrad)" />
             </AreaChart>
@@ -165,7 +164,7 @@ export default function AdminDashboard() {
               />
               <Tooltip
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' }}
-                formatter={(value: number) => [`${value}%`, 'Share']}
+                formatter={(value) => [`${value}%`, 'Share']}
               />
             </PieChart>
           </ResponsiveContainer>

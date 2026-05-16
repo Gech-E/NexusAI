@@ -53,8 +53,8 @@ export default function LoginPage() {
       );
 
       router.push(`/dashboard/${role}`);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during login.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred during login.');
     } finally {
       setLoading(false);
     }
@@ -130,7 +130,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-slate-400 mt-8">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/register" className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
               Create one
             </Link>

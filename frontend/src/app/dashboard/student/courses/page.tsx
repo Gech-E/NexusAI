@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, Star, BookOpen, Loader2, Plus, CheckCircle2 } from 'lucide-react';
+import { Play, BookOpen, Loader2, Plus, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 interface CourseItem {
@@ -44,6 +44,7 @@ export default function CoursesPage() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); }, [accessToken]);
 
   const handleEnroll = async (courseId: string) => {

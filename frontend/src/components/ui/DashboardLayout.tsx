@@ -5,10 +5,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BrainCircuit, LayoutDashboard, BookOpen, FileText, TrendingUp,
-  MessageSquare, Settings, LogOut, ChevronLeft, Menu, Users,
-  ShieldCheck, Activity, AlertTriangle, GraduationCap, Lightbulb,
+  LogOut, ChevronLeft, Menu, Users,
+  Activity, AlertTriangle, GraduationCap, Lightbulb,
   WifiOff, MonitorSmartphone, BarChart3, Building2, DollarSign,
-  Heart, Target, Zap, X
+  Target, X
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 

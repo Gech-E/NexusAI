@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Lightbulb, BookOpen, TrendingUp, Target, Clock, ArrowRight, BrainCircuit, RefreshCw, Loader2 } from 'lucide-react';
+import { Lightbulb, BookOpen, TrendingUp, Target, ArrowRight, BrainCircuit, RefreshCw, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 interface RecommendationItem {
@@ -55,6 +55,7 @@ export default function Recommendations() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchRecs(); }, [accessToken]);
 
   const handleRefresh = async () => {

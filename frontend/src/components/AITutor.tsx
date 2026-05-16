@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, BrainCircuit, User, Loader2, X } from 'lucide-react';
+import { Send, BrainCircuit, Loader2, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 export function AITutor() {
@@ -36,7 +36,7 @@ export function AITutor() {
       } else {
         setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I am having trouble connecting to the brain module right now.' }]);
       }
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, { role: 'ai', text: 'Offline mode is active, but the local AI engine is not responding.' }]);
     } finally {
       setLoading(false);

@@ -65,8 +65,8 @@ export default function RegisterPage() {
       );
 
       router.push(`/dashboard/${role}`);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during registration.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred during registration.');
     } finally {
       setLoading(false);
     }

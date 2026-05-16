@@ -9,7 +9,7 @@ import { ChartCard } from '@/components/ui/ChartCard';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, BarChart, Bar
+  PolarRadiusAxis
 } from 'recharts';
 
 const ttStyle = { backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px' };

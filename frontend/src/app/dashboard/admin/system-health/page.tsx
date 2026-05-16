@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Server, Database, BrainCircuit, Wifi, HardDrive, Activity, ShieldCheck, Loader2 } from 'lucide-react';
+import { Server, Database, BrainCircuit, Activity, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 const iconMap: Record<string, React.ElementType> = {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit, TrendingUp, AlertTriangle, Lightbulb, Users, Target, BookOpen, Loader2, Info, CheckCircle2 } from 'lucide-react';
+import { BrainCircuit, TrendingUp, AlertTriangle, Lightbulb, Users, Loader2, Info, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 const iconMap: Record<string, React.ElementType> = {
