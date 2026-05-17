@@ -348,13 +348,61 @@ class AITutorService:
     def __init__(self, db: AsyncSession | None = None):
         self.db = db
 
-    def validate_query(self, query: str) -> bool:
+    def validate_query(self, query: str) -> tuple[bool, str]:
+        """
+        Validate user input before processing. Returns (is_valid, rejection_message).
+        Catches: empty input, gibberish, repeated characters, pure symbols,
+        keyboard mashing, too-short/long queries, and non-educational spam.
+        """
         cleaned = query.strip()
-        if not cleaned or len(cleaned) < 2:
-            return False
-        if re.match(r'^[\W_]+$', cleaned):
-            return False
-        return True
+
+        # 1. Empty or too short
+        if not cleaned or len(cleaned) < 3:
+            return False, "Please type a question with at least a few words so I can help you. For example: *What is the chain rule?*"
+
+        # 2. Too long (likely paste-bombing)
+        if len(cleaned) > 2000:
+            return False, "Your message is too long. Please keep your question under 2000 characters."
+
+        # 3. Pure punctuation/symbols/whitespace (e.g. "...", "???", "!!!", "---")
+        if re.match(r'^[\W_\s]+$', cleaned):
+            return False, "It looks like you sent only symbols. Please type a clear question about a topic you'd like help with."
+
+        # 4. Repeated single character (e.g. "aaaaaaa", "xxxxxxxxxx")
+        if re.match(r'^(.)\1{4,}$', cleaned):
+            return False, "That doesn't look like a question. Try asking something like: *Explain photosynthesis* or *How do I solve quadratic equations?*"
+
+        # 5. Keyboard mashing / gibberish detection
+        # Count unique characters — real text has variety
+        alpha_chars = re.sub(r'[^a-zA-Z]', '', cleaned)
+        if len(alpha_chars) > 5:
+            unique_ratio = len(set(alpha_chars.lower())) / len(alpha_chars)
+            if unique_ratio < 0.15:
+                return False, "I couldn't understand that input. Please rephrase your question clearly."
+
+        # 6. No alphabetic content at all (pure numbers, emojis, etc.)
+        if len(alpha_chars) < 2:
+            return False, "Please include some words in your question so I can understand what you need help with."
+
+        # 7. Detect common keyboard-mash patterns
+        mash_patterns = [
+            r'^[asdfghjkl]{5,}$', r'^[qwertyuiop]{5,}$', r'^[zxcvbnm]{5,}$',
+            r'^(ha|he|lo|la|na){4,}$', r'^(ab|cd|ef){4,}$',
+        ]
+        for pattern in mash_patterns:
+            if re.match(pattern, cleaned.lower().replace(' ', '')):
+                return False, "That looks like random typing. Ask me an academic question and I'll do my best to help! 📚"
+
+        # 8. Repeated word spam (e.g. "test test test test test")
+        words = cleaned.lower().split()
+        if len(words) >= 4:
+            unique_words = set(words)
+            if len(unique_words) == 1:
+                return False, "It looks like you repeated the same word. Could you ask a specific question instead?"
+            if len(unique_words) / len(words) < 0.2:
+                return False, "Your message seems repetitive. Please ask a clear, specific question."
+
+        return True, ""
 
     # ── RAG: Gather student context ─────────────────────────
 
