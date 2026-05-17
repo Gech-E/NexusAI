@@ -391,7 +391,7 @@ class AITutorService:
         ]
         for pattern in mash_patterns:
             if re.match(pattern, cleaned.lower().replace(' ', '')):
-                return False, "That looks like random typing. Ask me an academic question and I'll do my best to help! 📚"
+                return False, "That looks like random typing. Ask me an academic question and I'll do my best to help!"
 
         # 8. Repeated word spam (e.g. "test test test test test")
         words = cleaned.lower().split()
