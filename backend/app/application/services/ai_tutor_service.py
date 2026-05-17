@@ -697,8 +697,9 @@ class AITutorService:
 
     async def get_tutor_response(self, query: str, user_id: str | UUID, conversation_id: str | UUID | None = None) -> str:
         """Main entry — generates an intelligent RAG-powered response."""
-        if not self.validate_query(query):
-            return "Please provide a clear question so I can help you learn. Try asking about a specific topic like calculus, physics, or biology."
+        is_valid, rejection_msg = self.validate_query(query)
+        if not is_valid:
+            return rejection_msg
 
         uid = UUID(str(user_id)) if isinstance(user_id, str) else user_id
         cid = UUID(str(conversation_id)) if conversation_id else None
