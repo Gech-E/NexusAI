@@ -2,21 +2,47 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, BrainCircuit, Loader2, X } from 'lucide-react';
+import { Send, BrainCircuit, Loader2, X, AlertCircle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { apiUrl } from '@/lib/api';
+
+/** Client-side input validation — catches obvious garbage before hitting the API */
+function validateInput(text: string): string | null {
+  const cleaned = text.trim();
+  if (!cleaned || cleaned.length < 3) return 'Please type a question with at least a few words.';
+  if (cleaned.length > 2000) return 'Message is too long. Please keep it under 2000 characters.';
+  if (/^[\W_\s]+$/.test(cleaned)) return 'Please type a real question, not just symbols.';
+  if (/^(.)\1{4,}$/.test(cleaned)) return 'That doesn\'t look like a question. Try asking about a topic!';
+  const alphaOnly = cleaned.replace(/[^a-zA-Z]/g, '');
+  if (alphaOnly.length < 2) return 'Please include some words in your question.';
+  if (alphaOnly.length > 5) {
+    const uniqueRatio = new Set(alphaOnly.toLowerCase()).size / alphaOnly.length;
+    if (uniqueRatio < 0.15) return 'I couldn\'t understand that. Please rephrase your question.';
+  }
+  const words = cleaned.toLowerCase().split(/\s+/);
+  if (words.length >= 4 && new Set(words).size === 1) return 'Please ask a specific question instead of repeating the same word.';
+  return null;
+}
 
 export function AITutor() {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai' | 'error'; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const accessToken = useAppStore(state => state.accessToken);
 
   const handleSend = async () => {
-    if (!query.trim() || !accessToken) return;
+    const userMsg = query.trim();
+    if (!userMsg || !accessToken) return;
 
-    const userMsg = query;
+    // Client-side validation
+    const validationError = validateInput(userMsg);
+    if (validationError) {
+      setMessages(prev => [...prev, { role: 'user', text: userMsg }, { role: 'error', text: validationError }]);
+      setQuery('');
+      return;
+    }
+
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setQuery('');
     setLoading(true);
@@ -88,8 +114,11 @@ export function AITutor() {
                   <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
                     msg.role === 'user' 
                       ? 'bg-cyan-500 text-slate-900 rounded-tr-none' 
+                      : msg.role === 'error'
+                      ? 'bg-amber-500/10 text-amber-300 rounded-tl-none border border-amber-500/30'
                       : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'
                   }`}>
+                    {msg.role === 'error' && <AlertCircle className="w-4 h-4 text-amber-400 mb-1.5 inline-block mr-1.5" />}
                     {msg.text}
                   </div>
                 </div>
@@ -116,7 +145,8 @@ export function AITutor() {
                 />
                 <button 
                   onClick={handleSend}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+                  disabled={!query.trim() || loading}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-40"
                 >
                   <Send className="w-5 h-5" />
                 </button>
