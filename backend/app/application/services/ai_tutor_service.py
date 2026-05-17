@@ -89,89 +89,209 @@ SYSTEM_PROMPT = """You are **Nexus AI Tutor**, an expert educational assistant e
 # ─────────────────────────────────────────────
 
 KNOWLEDGE_BASE: dict[str, dict[str, str]] = {
+    # ── Calculus ──
     "chain rule": {
         "subject": "Calculus",
         "explanation": (
-            "The **Chain Rule** is used to differentiate composite functions. If you have a function "
-            "f(g(x)), the derivative is:\n\n"
+            "The **Chain Rule** differentiates composite functions f(g(x)):\n\n"
             "  d/dx [f(g(x))] = f'(g(x)) · g'(x)\n\n"
-            "**Step-by-step:** 1) Identify outer and inner functions. "
-            "2) Differentiate the outer, keeping inner unchanged. "
-            "3) Multiply by the derivative of the inner function.\n\n"
+            "**Step-by-step:** 1) Identify outer and inner. 2) Differentiate outer, keep inner. "
+            "3) Multiply by inner's derivative.\n\n"
             "**Example:** d/dx [sin(x²)] = cos(x²) · 2x = **2x·cos(x²)**"
         ),
     },
     "derivative": {
         "subject": "Calculus",
-        "explanation": (
-            "A **derivative** measures the rate of change of a function. "
-            "Basic rules: Power Rule (d/dx[xⁿ] = nxⁿ⁻¹), "
-            "Product Rule (d/dx[fg] = f'g + fg'), "
-            "Quotient Rule (d/dx[f/g] = (f'g - fg')/g²)."
-        ),
+        "explanation": "A **derivative** measures rate of change. Power Rule: d/dx[xⁿ] = nxⁿ⁻¹. Product Rule: d/dx[fg] = f'g + fg'. Quotient Rule: d/dx[f/g] = (f'g - fg')/g².",
     },
     "integral": {
         "subject": "Calculus",
-        "explanation": (
-            "An **integral** calculates the area under a curve. "
-            "∫xⁿ dx = xⁿ⁺¹/(n+1) + C. Key techniques: substitution, "
-            "integration by parts, partial fractions."
-        ),
+        "explanation": "An **integral** is the area under a curve. ∫xⁿ dx = xⁿ⁺¹/(n+1) + C. Techniques: substitution, integration by parts (∫u dv = uv - ∫v du), partial fractions.",
     },
+    "limit": {
+        "subject": "Calculus",
+        "explanation": "A **limit** describes a function's behavior as x approaches a value. lim(x→a) f(x) = L. L'Hôpital's Rule: if 0/0 or ∞/∞, lim f/g = lim f'/g'. Squeeze theorem: if g≤f≤h and lim g = lim h = L, then lim f = L.",
+    },
+    "taylor series": {
+        "subject": "Calculus",
+        "explanation": "**Taylor Series** expands f(x) around point a: f(x) = Σ f⁽ⁿ⁾(a)/n! · (x-a)ⁿ. Maclaurin (a=0): eˣ = 1+x+x²/2+..., sin(x) = x-x³/6+x⁵/120-..., cos(x) = 1-x²/2+x⁴/24-...",
+    },
+    "differential equation": {
+        "subject": "Calculus",
+        "explanation": "**Differential equations** relate a function to its derivatives. Separable: dy/dx = g(x)h(y) → ∫dy/h(y) = ∫g(x)dx. Linear 1st order: dy/dx + P(x)y = Q(x), use integrating factor μ = e^(∫P dx).",
+    },
+    # ── Algebra ──
     "quadratic": {
         "subject": "Algebra",
-        "explanation": (
-            "Quadratic equation ax² + bx + c = 0. "
-            "Solution: x = (-b ± √(b²-4ac)) / 2a. "
-            "Discriminant Δ = b²-4ac determines root type."
-        ),
+        "explanation": "Quadratic ax² + bx + c = 0. Solution: x = (-b ± √(b²-4ac))/2a. Discriminant Δ = b²-4ac: Δ>0 → 2 real roots, Δ=0 → 1 repeated, Δ<0 → 2 complex. Vertex form: a(x-h)² + k.",
     },
     "linear equation": {
         "subject": "Algebra",
-        "explanation": "Linear equation y = mx + b. m = slope, b = y-intercept.",
+        "explanation": "Linear equation y = mx + b. m = slope = rise/run = (y₂-y₁)/(x₂-x₁). b = y-intercept. Parallel lines: same slope. Perpendicular: slopes multiply to -1.",
     },
+    "logarithm": {
+        "subject": "Algebra",
+        "explanation": "**Logarithms**: log_b(x) = y means bʸ = x. Laws: log(ab) = log(a)+log(b), log(a/b) = log(a)-log(b), log(aⁿ) = n·log(a). Change of base: log_b(x) = ln(x)/ln(b). Natural log: ln(e) = 1.",
+    },
+    "matrix": {
+        "subject": "Linear Algebra",
+        "explanation": "**Matrices**: rectangular arrays of numbers. Multiplication: (AB)ᵢⱼ = Σ aᵢₖbₖⱼ. Determinant 2×2: ad-bc. Inverse: A⁻¹ = (1/det)·adj(A). Eigenvalues: Av = λv, solve det(A-λI) = 0.",
+    },
+    "complex number": {
+        "subject": "Algebra",
+        "explanation": "**Complex numbers**: z = a + bi where i² = -1. Modulus: |z| = √(a²+b²). Conjugate: z̄ = a-bi. Euler: e^(iθ) = cos θ + i sin θ. De Moivre: (cos θ + i sin θ)ⁿ = cos(nθ) + i sin(nθ).",
+    },
+    # ── Physics ──
     "newton": {
         "subject": "Physics",
-        "explanation": (
-            "Newton's Laws: 1st (Inertia), 2nd (F=ma), 3rd (action-reaction). "
-            "F=ma is the most useful for problem-solving."
-        ),
+        "explanation": "**Newton's Laws**: 1st — an object stays at rest or constant velocity unless acted on by a net force (inertia). 2nd — F = ma (force equals mass times acceleration). 3rd — every action has an equal and opposite reaction. Weight = mg where g ≈ 9.8 m/s².",
     },
     "energy": {
         "subject": "Physics",
-        "explanation": "KE = ½mv², PE = mgh. Conservation: total energy is constant in closed systems.",
+        "explanation": "**Energy**: KE = ½mv² (kinetic), PE = mgh (gravitational potential). Conservation: total mechanical energy is constant in closed systems. Work-energy theorem: W_net = ΔKE. Power = Work/time = Fv.",
     },
+    "momentum": {
+        "subject": "Physics",
+        "explanation": "**Momentum**: p = mv. Impulse: J = FΔt = Δp. Conservation: total momentum is conserved in collisions. Elastic: KE conserved. Inelastic: objects stick together, m₁v₁ + m₂v₂ = (m₁+m₂)v_f.",
+    },
+    "electromagnetism": {
+        "subject": "Physics",
+        "explanation": "**Electromagnetism**: Coulomb's Law F = kq₁q₂/r². Electric field E = F/q. Ohm's Law V = IR. Magnetic force F = qv×B. Faraday's Law: EMF = -dΦ/dt. Maxwell's equations unify electricity and magnetism.",
+    },
+    "wave": {
+        "subject": "Physics",
+        "explanation": "**Waves**: v = fλ (velocity = frequency × wavelength). Types: transverse (light), longitudinal (sound). Standing waves: nodes and antinodes. Doppler effect: frequency shifts when source/observer move. Sound speed ≈ 343 m/s in air.",
+    },
+    "thermodynamics": {
+        "subject": "Physics",
+        "explanation": "**Thermodynamics**: 0th Law — thermal equilibrium is transitive. 1st Law — ΔU = Q - W (energy conservation). 2nd Law — entropy never decreases in isolated systems. 3rd Law — entropy approaches zero at absolute zero. Efficiency = W/Q_hot.",
+    },
+    "relativity": {
+        "subject": "Physics",
+        "explanation": "**Special Relativity**: speed of light c is constant for all observers. Time dilation: t' = t/√(1-v²/c²). Length contraction: L' = L√(1-v²/c²). Mass-energy equivalence: E = mc². Nothing with mass can reach c.",
+    },
+    # ── Biology ──
     "mitosis": {
         "subject": "Biology",
-        "explanation": "Mitosis: prophase → metaphase → anaphase → telophase → cytokinesis. Produces 2 identical diploid cells.",
+        "explanation": "**Mitosis**: cell division producing 2 identical diploid cells. Phases: Prophase (chromatin condenses) → Metaphase (chromosomes align at plate) → Anaphase (sister chromatids separate) → Telophase (nuclear envelope reforms) → Cytokinesis (cytoplasm divides).",
     },
     "meiosis": {
         "subject": "Biology",
-        "explanation": "Meiosis: two divisions producing 4 haploid gametes. Includes crossing over for genetic diversity.",
+        "explanation": "**Meiosis**: two divisions producing 4 haploid gametes. Meiosis I separates homologous pairs (crossing over occurs in prophase I). Meiosis II separates sister chromatids. Genetic diversity from crossing over and independent assortment.",
     },
     "photosynthesis": {
         "subject": "Biology",
-        "explanation": "6CO₂ + 6H₂O + light → C₆H₁₂O₆ + 6O₂. Light reactions (thylakoid) + Calvin cycle (stroma).",
+        "explanation": "**Photosynthesis**: 6CO₂ + 6H₂O + light → C₆H₁₂O₆ + 6O₂. Light reactions (thylakoid membrane): water split, ATP and NADPH produced. Calvin Cycle (stroma): CO₂ fixed by RuBisCO into G3P, uses ATP and NADPH.",
     },
+    "cellular respiration": {
+        "subject": "Biology",
+        "explanation": "**Cellular respiration**: C₆H₁₂O₆ + 6O₂ → 6CO₂ + 6H₂O + ~36 ATP. Stages: Glycolysis (cytoplasm, 2 ATP), Krebs Cycle (mitochondrial matrix, 2 ATP), Electron Transport Chain (inner membrane, ~32 ATP).",
+    },
+    "dna replication": {
+        "subject": "Biology",
+        "explanation": "**DNA Replication**: semi-conservative process. Helicase unwinds double helix. Primase adds RNA primer. DNA Polymerase III synthesizes new strand 5'→3'. Leading strand is continuous; lagging strand made in Okazaki fragments. Ligase seals fragments.",
+    },
+    "protein synthesis": {
+        "subject": "Biology",
+        "explanation": "**Protein Synthesis**: Transcription (nucleus): DNA → mRNA by RNA polymerase. mRNA is processed (5' cap, poly-A tail, introns spliced). Translation (ribosome): tRNA brings amino acids matching codon triplets. Start codon AUG (methionine).",
+    },
+    "evolution": {
+        "subject": "Biology",
+        "explanation": "**Evolution**: change in allele frequencies over time. Natural selection: organisms with advantageous traits survive and reproduce more. Evidence: fossils, homologous structures, DNA similarity. Hardy-Weinberg equilibrium: p² + 2pq + q² = 1 (no evolution conditions).",
+    },
+    "genetics": {
+        "subject": "Biology",
+        "explanation": "**Genetics**: Mendel's Laws — dominance, segregation, independent assortment. Genotype (genes) vs Phenotype (traits). Punnett squares predict offspring ratios. Incomplete dominance: blending. Codominance: both alleles expressed. Sex-linked traits on X chromosome.",
+    },
+    # ── Chemistry ──
     "periodic table": {
         "subject": "Chemistry",
-        "explanation": "Elements organized by atomic number. Trends: atomic radius ↓ left→right, electronegativity ↑ left→right.",
+        "explanation": "**Periodic Table**: elements by atomic number. Periods (rows) = energy levels. Groups (columns) = similar properties. Trends: atomic radius ↓ left→right (more protons), electronegativity ↑ left→right, ionization energy ↑ left→right. Group 1: alkali metals, Group 17: halogens, Group 18: noble gases.",
     },
     "chemical bond": {
         "subject": "Chemistry",
-        "explanation": "Ionic (electron transfer), Covalent (electron sharing), Metallic (electron sea). Bond strength: triple > double > single.",
+        "explanation": "**Chemical Bonds**: Ionic (electron transfer, metals+nonmetals, high melting point), Covalent (electron sharing, nonmetals, polar if unequal sharing), Metallic (electron sea, conducts electricity). Bond energy: triple > double > single. VSEPR theory predicts molecular geometry.",
     },
+    "stoichiometry": {
+        "subject": "Chemistry",
+        "explanation": "**Stoichiometry**: quantitative relationships in chemical reactions. Balance equations by atom count. Mole ratios from coefficients. Limiting reagent determines max product. Percent yield = (actual/theoretical) × 100%. Molar mass from periodic table.",
+    },
+    "acid base": {
+        "subject": "Chemistry",
+        "explanation": "**Acids & Bases**: Arrhenius — acids produce H⁺, bases produce OH⁻. Brønsted-Lowry — acids donate protons, bases accept. Lewis — acids accept electron pairs. pH = -log[H⁺]. pH 7 = neutral, <7 = acidic, >7 = basic. Strong acids fully dissociate (HCl, H₂SO₄).",
+    },
+    "organic chemistry": {
+        "subject": "Chemistry",
+        "explanation": "**Organic Chemistry**: carbon-based compounds. Hydrocarbons: alkanes (C-C), alkenes (C=C), alkynes (C≡C). Functional groups: -OH (alcohol), -COOH (carboxylic acid), -NH₂ (amine), C=O (carbonyl). Isomers: same formula, different structure.",
+    },
+    "oxidation reduction": {
+        "subject": "Chemistry",
+        "explanation": "**Redox Reactions**: Oxidation = loss of electrons (OIL). Reduction = gain of electrons (RIG). Oxidizing agent is reduced. Reducing agent is oxidized. Assign oxidation numbers to track electron transfer. Electrochemistry uses redox for batteries.",
+    },
+    # ── Mathematics ──
     "trigonometry": {
         "subject": "Mathematics",
-        "explanation": "SOH-CAH-TOA. sin²θ + cos²θ = 1. Unit circle: sin(30°)=½, sin(45°)=√2/2, sin(60°)=√3/2.",
+        "explanation": "**Trigonometry**: SOH-CAH-TOA. sin²θ + cos²θ = 1. Unit circle: sin(30°)=½, sin(45°)=√2/2, sin(60°)=√3/2. Law of Sines: a/sinA = b/sinB. Law of Cosines: c² = a² + b² - 2ab·cosC. Radian conversion: π rad = 180°.",
     },
     "probability": {
         "subject": "Statistics",
-        "explanation": "P(A) = favorable/total. P(A∪B) = P(A)+P(B)-P(A∩B). Bayes: P(A|B) = P(B|A)·P(A)/P(B).",
+        "explanation": "**Probability**: P(A) = favorable/total. P(A∪B) = P(A)+P(B)-P(A∩B). Conditional: P(A|B) = P(A∩B)/P(B). Bayes' Theorem: P(A|B) = P(B|A)·P(A)/P(B). Independent events: P(A∩B) = P(A)·P(B). Permutations: nPr = n!/(n-r)!.",
     },
+    "statistics": {
+        "subject": "Statistics",
+        "explanation": "**Statistics**: Mean = Σx/n. Median = middle value. Mode = most frequent. Std deviation σ = √(Σ(x-μ)²/n). Normal distribution: 68-95-99.7 rule. Z-score: z = (x-μ)/σ. Correlation: r ranges from -1 to 1. Regression: ŷ = mx + b.",
+    },
+    "set theory": {
+        "subject": "Mathematics",
+        "explanation": "**Set Theory**: Union A∪B (elements in either). Intersection A∩B (elements in both). Complement A' (not in A). Subset A⊆B. Empty set ∅. |A∪B| = |A| + |B| - |A∩B|. De Morgan's Laws: (A∪B)' = A'∩B', (A∩B)' = A'∪B'.",
+    },
+    # ── Computer Science ──
+    "algorithm": {
+        "subject": "Computer Science",
+        "explanation": "**Algorithms**: step-by-step procedures. Time complexity with Big-O: O(1) constant, O(log n) logarithmic, O(n) linear, O(n log n) linearithmic, O(n²) quadratic. Common sorts: Merge Sort O(n log n), Quick Sort O(n log n avg), Bubble Sort O(n²).",
+    },
+    "data structure": {
+        "subject": "Computer Science",
+        "explanation": "**Data Structures**: Array (O(1) access), Linked List (O(1) insert), Stack (LIFO), Queue (FIFO), Hash Table (O(1) avg lookup), Binary Search Tree (O(log n) search), Heap (priority queue), Graph (vertices + edges).",
+    },
+    "recursion": {
+        "subject": "Computer Science",
+        "explanation": "**Recursion**: a function that calls itself. Must have: base case (stopping condition) and recursive case (moves toward base). Classic examples: factorial n! = n × (n-1)!, Fibonacci F(n) = F(n-1) + F(n-2). Can be replaced by iteration + stack.",
+    },
+    "object oriented": {
+        "subject": "Computer Science",
+        "explanation": "**OOP**: 4 pillars — Encapsulation (hiding internal state), Abstraction (simplifying interface), Inheritance (child extends parent), Polymorphism (same interface, different behavior). Classes define blueprints; objects are instances. SOLID principles guide good design.",
+    },
+    # ── History ──
     "world war": {
         "subject": "History",
-        "explanation": "WWII (1939-1945): Germany invades Poland, Pearl Harbor, D-Day, atomic bombs. ~70-85M casualties.",
+        "explanation": "**WWII (1939-1945)**: Axis (Germany, Italy, Japan) vs Allies (UK, US, USSR). Key events: Germany invades Poland, Fall of France, Pearl Harbor (1941), D-Day (June 6, 1944), Battle of Stalingrad, atomic bombs on Hiroshima and Nagasaki. ~70-85M casualties. Led to UN creation.",
+    },
+    "french revolution": {
+        "subject": "History",
+        "explanation": "**French Revolution (1789-1799)**: Causes — social inequality (Three Estates), financial crisis, Enlightenment ideas. Events: Storming of Bastille, Declaration of Rights of Man, Reign of Terror under Robespierre, rise of Napoleon. Ended absolute monarchy, inspired democracy worldwide.",
+    },
+    "cold war": {
+        "subject": "History",
+        "explanation": "**Cold War (1947-1991)**: ideological conflict between US (capitalism/democracy) and USSR (communism). Never direct combat. Key events: Berlin Wall, Cuban Missile Crisis, Korean War, Vietnam War, Space Race, arms race (MAD). Ended with USSR dissolution in 1991.",
+    },
+    # ── Economics ──
+    "supply demand": {
+        "subject": "Economics",
+        "explanation": "**Supply and Demand**: demand curve slopes down (price ↑, quantity demanded ↓). Supply curve slopes up. Equilibrium where curves intersect. Shifts: income changes shift demand, technology shifts supply. Price elasticity measures responsiveness to price changes.",
+    },
+    "gdp": {
+        "subject": "Economics",
+        "explanation": "**GDP (Gross Domestic Product)**: total market value of goods and services produced in a country. GDP = C + I + G + (X-M). Real GDP adjusts for inflation. GDP per capita = GDP/population. GDP growth rate measures economic health.",
+    },
+    # ── Literature ──
+    "literary device": {
+        "subject": "Literature",
+        "explanation": "**Literary Devices**: Metaphor (implied comparison), Simile (using like/as), Personification (human qualities to non-human), Irony (opposite of expected), Foreshadowing (hints at future), Symbolism (object represents idea), Alliteration (repeated initial sounds).",
+    },
+    "essay writing": {
+        "subject": "English",
+        "explanation": "**Essay Structure**: Introduction (hook, context, thesis statement), Body paragraphs (topic sentence, evidence, analysis, transition), Conclusion (restate thesis, summarize, broader implication). Use PEEL: Point, Evidence, Explanation, Link.",
     },
 }
 
