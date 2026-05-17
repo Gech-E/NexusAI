@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BrainCircuit, Send, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -64,6 +64,12 @@ export default function AITutorPage() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai' | 'error'; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const accessToken = useAppStore(state => state.accessToken);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
   const handleSend = async (text?: string) => {
     let msg = (text || query).trim();
@@ -159,6 +165,7 @@ export default function AITutorPage() {
               </div>
             </div>
           )}
+          <div ref={chatEndRef} />
         </div>
 
         {/* Input */}
