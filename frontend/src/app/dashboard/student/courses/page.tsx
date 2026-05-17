@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Play, BookOpen, Loader2, Plus, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { apiUrl } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 
 interface CourseItem {
   id: string;
@@ -22,6 +23,7 @@ interface EnrolledCourse {
 }
 
 export default function CoursesPage() {
+  const router = useRouter();
   const accessToken = useAppStore(state => state.accessToken);
   const [allCourses, setAllCourses] = useState<CourseItem[]>([]);
   const [enrolled, setEnrolled] = useState<EnrolledCourse[]>([]);
@@ -131,7 +133,10 @@ export default function CoursesPage() {
                       transition={{ duration: 0.8, delay: 0.3 + idx * 0.1 }}
                       className="h-full bg-cyan-500 rounded-full" />
                   </div>
-                  <button className="w-full mt-5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                  <button 
+                    onClick={() => router.push('/dashboard/student/quizzes')}
+                    className="w-full mt-5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                  >
                     <Play className="w-4 h-4 fill-current" /> Continue
                   </button>
                 </div>
