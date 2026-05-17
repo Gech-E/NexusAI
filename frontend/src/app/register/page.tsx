@@ -6,6 +6,8 @@ import { BrainCircuit, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
+import { apiPost, apiGet } from '@/lib/api';
+import { toast } from '@/components/ui/Toaster';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -34,27 +36,17 @@ export default function RegisterPage() {
         school_slug: 'demo-school'
       };
 
-      const registerRes = await fetch('http://127.0.0.1:8000/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const { access_token, refresh_token } = await apiPost<{ access_token: string; refresh_token: string }>(
+        '/api/v1/auth/register',
+        payload,
+        { noAuth: true }
+      );
 
-      if (!registerRes.ok) {
-        const errorData = await registerRes.json();
-        throw new Error(errorData.detail || 'Registration failed');
-      }
+      const userData = await apiGet<{ id: string; email: string; full_name: string; roles: string[] }>(
+        '/api/v1/users/me',
+        { headers: { Authorization: `Bearer ${access_token}` } as Record<string, string>, noAuth: true }
+      );
 
-      const { access_token, refresh_token } = await registerRes.json();
-
-      const userRes = await fetch('http://127.0.0.1:8000/api/v1/users/me', {
-        headers: { 'Authorization': `Bearer ${access_token}` },
-      });
-
-      if (!userRes.ok) throw new Error('Failed to fetch user profile');
-
-      const userData = await userRes.json();
-      
       const firstName = userData.full_name.split(' ')[0];
       const role = userData.roles.includes('admin') ? 'admin' : (userData.roles.includes('teacher') ? 'teacher' : 'student');
 
@@ -64,9 +56,12 @@ export default function RegisterPage() {
         refresh_token
       );
 
+      toast.success(`Welcome to Nexus LearnAI, ${firstName}!`);
       router.push(`/dashboard/${role}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred during registration.');
+      const msg = err instanceof Error ? err.message : 'An error occurred during registration.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -103,44 +98,51 @@ export default function RegisterPage() {
           <form onSubmit={handleRegister} className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">First Name</label>
+                <label htmlFor="reg-first" className="block text-sm font-medium text-slate-300 mb-2">First Name</label>
                 <input
+                  id="reg-first"
                   type="text"
                   value={formData.firstName}
                   onChange={(e) => setFormData({...formData, firstName: e.target.value})}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                   placeholder="Jane"
                   required
+                  autoComplete="given-name"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Last Name</label>
+                <label htmlFor="reg-last" className="block text-sm font-medium text-slate-300 mb-2">Last Name</label>
                 <input
+                  id="reg-last"
                   type="text"
                   value={formData.lastName}
                   onChange={(e) => setFormData({...formData, lastName: e.target.value})}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                   placeholder="Doe"
                   required
+                  autoComplete="family-name"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
+              <label htmlFor="reg-email" className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
               <input
+                id="reg-email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
                 className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                 placeholder="you@school.edu"
                 required
+                autoComplete="email"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Role</label>
+              <label htmlFor="reg-role" className="block text-sm font-medium text-slate-300 mb-2">Role</label>
               <select
+                id="reg-role"
                 value={formData.role}
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
                 className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none"
@@ -151,8 +153,9 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="reg-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
               <input
+                id="reg-password"
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
@@ -160,6 +163,7 @@ export default function RegisterPage() {
                 placeholder="••••••••"
                 required
                 minLength={8}
+                autoComplete="new-password"
               />
             </div>
 

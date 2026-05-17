@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 export const useOfflineSync = () => {
   const setOfflineStatus = useAppStore((state) => state.setOfflineStatus);
@@ -18,7 +19,7 @@ export const useOfflineSync = () => {
       
       if (offlineQueue.length > 0 && accessToken) {
         try {
-          const response = await fetch('http://127.0.0.1:8000/api/v1/sync/bulk', {
+          const response = await fetch(apiUrl('/api/v1/sync/bulk'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

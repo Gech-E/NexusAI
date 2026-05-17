@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BrainCircuit, Send, Loader2, Sparkles } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 const suggestedPrompts = [
   'Explain the chain rule in calculus',
@@ -29,7 +30,7 @@ export default function AITutorPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/ai/tutor/query', {
+      const response = await fetch(apiUrl('/api/v1/ai/tutor/query'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify({ query: msg })

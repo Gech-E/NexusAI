@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, BrainCircuit, Loader2, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 export function AITutor() {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,7 +22,7 @@ export function AITutor() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/ai/tutor/query', {
+      const response = await fetch(apiUrl('/api/v1/ai/tutor/query'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

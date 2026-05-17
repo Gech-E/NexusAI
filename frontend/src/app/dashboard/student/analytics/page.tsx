@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Target, Clock, Zap, Loader2, BrainCircuit } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
 import {
@@ -33,7 +34,7 @@ export default function StudentAnalytics() {
     const fetchDetailed = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/me/detailed', {
+        const res = await fetch(apiUrl('/api/v1/analytics/me/detailed'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setData(await res.json());

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Target, Clock, CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 interface QuizItem {
@@ -32,8 +33,8 @@ export default function PracticeExams() {
       if (!accessToken) return;
       try {
         const [quizRes, attRes] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
-          fetch('http://127.0.0.1:8000/api/v1/quizzes/me/attempts', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(apiUrl('/api/v1/quizzes'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(apiUrl('/api/v1/quizzes/me/attempts'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
         ]);
         if (quizRes.ok) setQuizzes(await quizRes.json());
         if (attRes.ok) setAttempts(await attRes.json());

@@ -6,6 +6,8 @@ import { BrainCircuit, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
+import { apiPost, apiGet } from '@/lib/api';
+import { toast } from '@/components/ui/Toaster';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -21,28 +23,17 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const loginRes = await fetch('http://127.0.0.1:8000/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const { access_token, refresh_token } = await apiPost<{ access_token: string; refresh_token: string }>(
+        '/api/v1/auth/login',
+        { email, password },
+        { noAuth: true }
+      );
 
-      if (!loginRes.ok) {
-        const errorData = await loginRes.json();
-        throw new Error(errorData.detail || 'Invalid credentials');
-      }
+      const userData = await apiGet<{ id: string; email: string; full_name: string; roles: string[] }>(
+        '/api/v1/users/me',
+        { headers: { Authorization: `Bearer ${access_token}` } as Record<string, string>, noAuth: true }
+      );
 
-      const { access_token, refresh_token } = await loginRes.json();
-
-      const userRes = await fetch('http://127.0.0.1:8000/api/v1/users/me', {
-        headers: { 'Authorization': `Bearer ${access_token}` },
-      });
-
-      if (!userRes.ok) throw new Error('Failed to fetch user profile');
-
-      const userData = await userRes.json();
-      
-      // Derive display name and role
       const firstName = userData.full_name.split(' ')[0];
       const role = userData.roles.includes('admin') ? 'admin' : (userData.roles.includes('teacher') ? 'teacher' : 'student');
 
@@ -52,9 +43,12 @@ export default function LoginPage() {
         refresh_token
       );
 
+      toast.success(`Welcome back, ${firstName}!`);
       router.push(`/dashboard/${role}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred during login.');
+      const msg = err instanceof Error ? err.message : 'An error occurred during login.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -90,25 +84,29 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 placeholder="you@school.edu"
                 required
+                autoComplete="email"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
               />
             </div>
             
@@ -117,7 +115,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="w-4 h-4 rounded border-slate-700 bg-slate-900/50 text-cyan-500 focus:ring-cyan-500 mr-2" />
                 Remember me
               </label>
-              <a href="#" className="text-cyan-400 hover:text-cyan-300 transition-colors">Forgot password?</a>
+              <span className="text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer">Forgot password?</span>
             </div>
 
             <button

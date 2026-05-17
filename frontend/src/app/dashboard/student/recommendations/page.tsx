@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Lightbulb, BookOpen, TrendingUp, Target, ArrowRight, BrainCircuit, RefreshCw, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 interface RecommendationItem {
   id: string;
@@ -44,7 +45,7 @@ export default function Recommendations() {
   const fetchRecs = async () => {
     if (!accessToken) return;
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/v1/recommendations/me', {
+      const res = await fetch(apiUrl('/api/v1/recommendations/me'), {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
       if (res.ok) setRecommendations(await res.json());
@@ -62,7 +63,7 @@ export default function Recommendations() {
     if (!accessToken) return;
     setRefreshing(true);
     try {
-      await fetch('http://127.0.0.1:8000/api/v1/recommendations/me/refresh', {
+      await fetch(apiUrl('/api/v1/recommendations/me/refresh'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });

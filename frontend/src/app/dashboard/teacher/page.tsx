@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, AlertTriangle, Activity, FileText, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl, wsUrl } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
@@ -55,7 +56,7 @@ export default function TeacherDashboard() {
     const fetchStats = async () => {
       if (!accessToken) return;
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/summary', {
+        const response = await fetch(apiUrl('/api/v1/analytics/teacher/summary'), {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (response.ok) {
@@ -72,7 +73,7 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/cv-alerts/${user.id}`);
+    const ws = new WebSocket(wsUrl(`/ws/cv-alerts/${user.id}`));
     ws.onopen = () => {
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send('ping');

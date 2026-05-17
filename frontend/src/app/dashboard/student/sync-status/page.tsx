@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { WifiOff, Wifi, Cloud, RefreshCw, Check, AlertTriangle, Database, HardDrive, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 interface SyncLog {
   id: string;
@@ -39,7 +40,7 @@ export default function SyncStatus() {
   const fetchStatus = async () => {
     if (!accessToken) return;
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/v1/sync/status', {
+      const res = await fetch(apiUrl('/api/v1/sync/status'), {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
       if (res.ok) setData(await res.json());

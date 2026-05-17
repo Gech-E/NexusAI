@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 const trendIcon: Record<string, React.ReactNode> = {
   up: <TrendingUp className="w-4 h-4 text-emerald-400" />,
@@ -39,7 +40,7 @@ export default function TeacherStudents() {
     const fetchStudents = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/students', {
+        const res = await fetch(apiUrl('/api/v1/analytics/teacher/students'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setStudents(await res.json());

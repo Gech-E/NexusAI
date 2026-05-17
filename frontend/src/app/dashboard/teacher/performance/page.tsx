@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
@@ -26,7 +27,7 @@ export default function Performance() {
     const fetchPerf = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/performance', {
+        const res = await fetch(apiUrl('/api/v1/analytics/teacher/performance'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setData(await res.json());

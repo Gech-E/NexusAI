@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { FileText, Plus, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 interface Quiz { id: string; title: string; school_id: string; }
 
@@ -18,7 +19,7 @@ export default function ExamsList() {
     const fetchQuizzes = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        const res = await fetch(apiUrl('/api/v1/quizzes'), { headers: { 'Authorization': `Bearer ${accessToken}` } });
         if (res.ok) setQuizzes(await res.json());
       } catch { /* ignore */ }
       finally { setLoading(false); }

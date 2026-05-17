@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, BookOpen, Loader2, Plus, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 interface CourseItem {
   id: string;
@@ -32,8 +33,8 @@ export default function CoursesPage() {
     if (!accessToken) return;
     try {
       const [coursesRes, enrolledRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/v1/courses', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
-        fetch('http://127.0.0.1:8000/api/v1/courses/me/enrolled', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+        fetch(apiUrl('/api/v1/courses'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+        fetch(apiUrl('/api/v1/courses/me/enrolled'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
       ]);
       if (coursesRes.ok) setAllCourses(await coursesRes.json());
       if (enrolledRes.ok) setEnrolled(await enrolledRes.json());
@@ -51,7 +52,7 @@ export default function CoursesPage() {
     if (!accessToken) return;
     setEnrolling(courseId);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/courses/enroll/${courseId}`, {
+      const res = await fetch(apiUrl(`/api/v1/courses/${courseId}/enroll`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
@@ -181,3 +182,4 @@ export default function CoursesPage() {
     </div>
   );
 }
+

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 const roleBadge: Record<string, string> = { student: 'text-cyan-400 bg-cyan-500/10', teacher: 'text-emerald-400 bg-emerald-500/10', admin: 'text-purple-400 bg-purple-500/10' };
 
@@ -28,7 +29,7 @@ export default function AdminUsers() {
     const fetchUsers = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/admin/users', {
+        const res = await fetch(apiUrl('/api/v1/admin/users'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setUsers(await res.json());
@@ -44,7 +45,7 @@ export default function AdminUsers() {
   const toggleActive = async (userId: string) => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/admin/users/${userId}/toggle-active`, {
+      const res = await fetch(apiUrl(``), {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });

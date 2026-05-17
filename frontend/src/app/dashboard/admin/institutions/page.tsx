@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Building2, Users, TrendingUp, MapPin, Plus, Settings, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 const colorMap: Record<string, { bg: string; border: string; text: string }> = {
   cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400' },
@@ -34,7 +35,7 @@ export default function Institutions() {
     const fetchInstitutions = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/admin/institutions', {
+        const res = await fetch(apiUrl('/api/v1/admin/institutions'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setInstitutions(await res.json());

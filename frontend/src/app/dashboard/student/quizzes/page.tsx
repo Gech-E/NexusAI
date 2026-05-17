@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, Clock, ChevronRight, Loader2, FileText, Play } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 interface QuizItem {
@@ -34,8 +35,8 @@ export default function QuizzesPage() {
       if (!accessToken) return;
       try {
         const [quizzesRes, attemptsRes] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/v1/quizzes', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
-          fetch('http://127.0.0.1:8000/api/v1/quizzes/me/attempts', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(apiUrl('/api/v1/quizzes'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(apiUrl('/api/v1/quizzes/me/attempts'), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
         ]);
         if (quizzesRes.ok) setQuizzes(await quizzesRes.json());
         if (attemptsRes.ok) setAttempts(await attemptsRes.json());

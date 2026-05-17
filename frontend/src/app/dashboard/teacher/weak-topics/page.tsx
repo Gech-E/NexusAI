@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, TrendingDown, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -26,7 +27,7 @@ export default function WeakTopics() {
     const fetchTopics = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/analytics/teacher/weak-topics', {
+        const res = await fetch(apiUrl('/api/v1/analytics/teacher/weak-topics'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) setTopics(await res.json());

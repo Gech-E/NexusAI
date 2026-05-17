@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Server, Database, BrainCircuit, Activity, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiUrl } from '@/lib/api';
 
 const iconMap: Record<string, React.ElementType> = {
   'API Server': Server, 'Database': Database, 'AI Engine': BrainCircuit, 'CV Module': ShieldCheck,
@@ -36,7 +37,7 @@ export default function SystemHealth() {
     const fetchHealth = async () => {
       if (!accessToken) return;
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/v1/admin/system-health', {
+        const res = await fetch(apiUrl('/api/v1/admin/system-health'), {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (res.ok) {

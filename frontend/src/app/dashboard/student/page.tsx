@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { AITutor } from '@/components/AITutor';
 import { StatCard } from '@/components/ui/StatCard';
 import { ChartCard } from '@/components/ui/ChartCard';
+import { apiGet } from '@/lib/api';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts';
@@ -51,13 +52,8 @@ export default function StudentDashboard() {
     const fetchStats = async () => {
       if (!accessToken) return;
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/v1/analytics/me/summary', {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        }
+        const data = await apiGet<DashboardStats>('/api/v1/analytics/me/summary');
+        setStats(data);
       } catch (error) {
         console.error('Failed to fetch stats:', error);
       } finally {
