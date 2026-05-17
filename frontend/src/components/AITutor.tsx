@@ -54,6 +54,32 @@ const quickPrompts = [
 
 type ChatMessage = { role: 'user' | 'ai' | 'error'; text: string };
 
+const playMessageSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioCtx = new AudioContextClass();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+    
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
+    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.15);
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.15);
+  } catch (e) {
+    // Ignore if audio fails
+  }
+};
+
 export function AITutor() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -69,7 +95,10 @@ export function AITutor() {
   }, [messages, loading]);
 
   const handleSend = async (text?: string) => {
-    const userMsg = (text || query).trim();
+    // Strip trailing/leading dots and trim
+    let userMsg = (text || query).trim();
+    userMsg = userMsg.replace(/^\.+|\.+$/g, '').trim();
+    
     if (!userMsg || !accessToken || loading) return;
 
     const validationError = validateInput(userMsg);
@@ -92,11 +121,14 @@ export function AITutor() {
       if (response.ok) {
         const data = await response.json();
         setMessages(prev => [...prev, { role: 'ai', text: data.response }]);
+        playMessageSound();
       } else {
         setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I\'m having trouble right now. Please try again.' }]);
+        playMessageSound();
       }
     } catch {
       setMessages(prev => [...prev, { role: 'ai', text: 'Connection error. Please check your network.' }]);
+      playMessageSound();
     } finally {
       setLoading(false);
     }

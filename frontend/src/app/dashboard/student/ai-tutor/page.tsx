@@ -33,6 +33,32 @@ const suggestedPrompts = [
   'What are the key events of World War II?',
 ];
 
+const playMessageSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioCtx = new AudioContextClass();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+    
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
+    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.15);
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.15);
+  } catch (e) {
+    // Ignore if audio fails
+  }
+};
+
 export default function AITutorPage() {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'ai' | 'error'; text: string }[]>([]);
@@ -40,7 +66,9 @@ export default function AITutorPage() {
   const accessToken = useAppStore(state => state.accessToken);
 
   const handleSend = async (text?: string) => {
-    const msg = (text || query).trim();
+    let msg = (text || query).trim();
+    msg = msg.replace(/^\.+|\.+$/g, '').trim();
+    
     if (!msg || !accessToken) return;
 
     // Client-side validation
@@ -64,11 +92,14 @@ export default function AITutorPage() {
       if (response.ok) {
         const data = await response.json();
         setMessages(prev => [...prev, { role: 'ai', text: data.response }]);
+        playMessageSound();
       } else {
         setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I am having trouble right now. Please try again.' }]);
+        playMessageSound();
       }
     } catch {
       setMessages(prev => [...prev, { role: 'ai', text: 'Offline mode is active, but the local AI engine is not responding.' }]);
+      playMessageSound();
     } finally {
       setLoading(false);
     }
