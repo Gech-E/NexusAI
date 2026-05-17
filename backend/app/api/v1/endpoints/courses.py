@@ -79,7 +79,7 @@ async def my_enrolled_courses(db: DbSession, user: CurrentUser) -> list[dict]:
     ]
 
 
-@router.post("/enroll/{course_id}")
+@router.post("/{course_id}/enroll")
 async def enroll_in_course(course_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     course = await db.get(Course, course_id)
     if not course:
