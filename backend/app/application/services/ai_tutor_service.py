@@ -1,10 +1,12 @@
 """
-AI Tutor Service — Intelligent conversational tutoring engine.
+AI Tutor Service — RAG-powered conversational tutoring with Gemini.
 
-Uses a rule-based knowledge engine with subject-specific response templates,
-semantic analysis, and conversation memory. In production, this wraps a local
-quantized LLM (LLaMA.cpp / ONNX) via the C++ bridge. The current implementation
-provides rich, educational responses using a built-in knowledge base.
+Uses Google Gemini API with Retrieval-Augmented Generation (RAG):
+1. Gathers student context (courses, quiz scores, weak topics) from the DB
+2. Retrieves relevant knowledge base snippets
+3. Includes conversation history for multi-turn dialogue
+4. Sends everything to Gemini with a carefully crafted system prompt
+5. Falls back to the built-in knowledge base if Gemini is unavailable
 """
 
 import logging
@@ -18,256 +20,171 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.models.ai_data import AIConversation, AIMessage
 from app.infrastructure.models.assessment import QuizAttempt, QuizResult, Question
+from app.infrastructure.models.academic import Course, Enrollment
 
 logger = logging.getLogger(__name__)
 
-# ────────────────────────────────────────
-# Built-in knowledge base for the AI tutor
-# ────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Gemini client (lazy-init singleton)
+# ─────────────────────────────────────────────
+
+_gemini_model = None
+
+
+def _get_gemini_model():
+    """Lazy-initialize the Gemini model. Returns None if API key is missing."""
+    global _gemini_model
+    if _gemini_model is not None:
+        return _gemini_model
+
+    from app.core.config import settings
+    if not settings.gemini_api_key:
+        logger.warning("GEMINI_API_KEY not set — AI Tutor will use fallback knowledge base only.")
+        return None
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=settings.gemini_api_key)
+        _gemini_model = genai.GenerativeModel(settings.gemini_model)
+        logger.info(f"Gemini model initialized: {settings.gemini_model}")
+        return _gemini_model
+    except Exception as e:
+        logger.error(f"Failed to initialize Gemini: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────
+# System prompt for the AI tutor
+# ─────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are **Nexus AI Tutor**, an expert educational assistant embedded in the Nexus LearnAI platform. You help students learn by providing clear, accurate, and engaging explanations.
+
+## Your Personality
+- Patient, encouraging, and supportive
+- You break complex concepts into digestible steps
+- You use analogies and real-world examples when helpful
+- You celebrate the student's strengths and gently address weaknesses
+- You speak directly to the student using "you"
+
+## Rules
+1. **Only answer educational/academic questions.** If someone asks something unrelated to learning (e.g., personal advice, coding a virus, political opinions), politely decline and redirect to academic topics.
+2. **Use the student's performance data** (provided below) to personalize your responses. If they scored low in a topic, give extra detail. If they're strong, offer advanced extensions.
+3. **Reference course material** when relevant — mention the student's actual enrolled courses by name.
+4. **Use markdown formatting** for readability: bold key terms, use bullet points, numbered steps, and code blocks where appropriate.
+5. **Show your work** — for math/science, always show step-by-step solutions.
+6. **Be concise but thorough** — aim for 150-400 words unless the topic demands more detail.
+7. **End with a thought-provoking follow-up question** to keep the student engaged.
+8. **If you don't know the answer with certainty, say so** — never fabricate facts.
+
+## Student Context
+{student_context}
+
+## Relevant Knowledge Base
+{knowledge_context}
+"""
+
+
+# ─────────────────────────────────────────────
+# Built-in knowledge base (fallback + RAG context)
+# ─────────────────────────────────────────────
 
 KNOWLEDGE_BASE: dict[str, dict[str, str]] = {
-    # Mathematics
     "chain rule": {
         "subject": "Calculus",
         "explanation": (
             "The **Chain Rule** is used to differentiate composite functions. If you have a function "
             "f(g(x)), the derivative is:\n\n"
             "  d/dx [f(g(x))] = f'(g(x)) · g'(x)\n\n"
-            "**Step-by-step approach:**\n"
-            "1. Identify the outer function f and inner function g\n"
-            "2. Differentiate the outer function, keeping the inner function unchanged\n"
-            "3. Multiply by the derivative of the inner function\n\n"
-            "**Example:** Find d/dx [sin(x²)]\n"
-            "• Outer: sin(u), Inner: u = x²\n"
-            "• f'(g(x)) = cos(x²)\n"
-            "• g'(x) = 2x\n"
-            "• **Result: 2x·cos(x²)**"
+            "**Step-by-step:** 1) Identify outer and inner functions. "
+            "2) Differentiate the outer, keeping inner unchanged. "
+            "3) Multiply by the derivative of the inner function.\n\n"
+            "**Example:** d/dx [sin(x²)] = cos(x²) · 2x = **2x·cos(x²)**"
         ),
     },
     "derivative": {
         "subject": "Calculus",
         "explanation": (
-            "A **derivative** measures the rate of change of a function at any point. "
-            "It tells you the slope of the tangent line to a curve.\n\n"
-            "**Basic derivative rules:**\n"
-            "• Power Rule: d/dx [xⁿ] = n·xⁿ⁻¹\n"
-            "• Constant Rule: d/dx [c] = 0\n"
-            "• Sum Rule: d/dx [f+g] = f' + g'\n"
-            "• Product Rule: d/dx [fg] = f'g + fg'\n"
-            "• Quotient Rule: d/dx [f/g] = (f'g - fg') / g²\n\n"
-            "**Example:** d/dx [3x⁴ + 2x² - 5] = 12x³ + 4x"
+            "A **derivative** measures the rate of change of a function. "
+            "Basic rules: Power Rule (d/dx[xⁿ] = nxⁿ⁻¹), "
+            "Product Rule (d/dx[fg] = f'g + fg'), "
+            "Quotient Rule (d/dx[f/g] = (f'g - fg')/g²)."
         ),
     },
     "integral": {
         "subject": "Calculus",
         "explanation": (
-            "An **integral** is the reverse of a derivative. It calculates the area under a curve.\n\n"
-            "**Indefinite Integral:** ∫f(x)dx = F(x) + C, where F'(x) = f(x)\n"
-            "**Definite Integral:** ∫[a,b] f(x)dx = F(b) - F(a)\n\n"
-            "**Common integrals:**\n"
-            "• ∫xⁿ dx = xⁿ⁺¹/(n+1) + C (n ≠ -1)\n"
-            "• ∫sin(x) dx = -cos(x) + C\n"
-            "• ∫cos(x) dx = sin(x) + C\n"
-            "• ∫eˣ dx = eˣ + C\n\n"
-            "**Techniques:** Substitution, Integration by Parts, Partial Fractions, Trigonometric Substitution"
+            "An **integral** calculates the area under a curve. "
+            "∫xⁿ dx = xⁿ⁺¹/(n+1) + C. Key techniques: substitution, "
+            "integration by parts, partial fractions."
         ),
     },
     "quadratic": {
         "subject": "Algebra",
         "explanation": (
-            "A **quadratic equation** has the form ax² + bx + c = 0.\n\n"
-            "**The Quadratic Formula:** x = (-b ± √(b²-4ac)) / (2a)\n\n"
-            "**The Discriminant (Δ = b²-4ac):**\n"
-            "• Δ > 0 → Two distinct real roots\n"
-            "• Δ = 0 → One repeated real root\n"
-            "• Δ < 0 → Two complex conjugate roots\n\n"
-            "**Example:** Solve 2x² + 5x - 3 = 0\n"
-            "• a=2, b=5, c=-3\n"
-            "• Δ = 25 - 4(2)(-3) = 25 + 24 = 49\n"
-            "• x = (-5 ± 7) / 4\n"
-            "• **x = 1/2 or x = -3**"
+            "Quadratic equation ax² + bx + c = 0. "
+            "Solution: x = (-b ± √(b²-4ac)) / 2a. "
+            "Discriminant Δ = b²-4ac determines root type."
         ),
     },
     "linear equation": {
         "subject": "Algebra",
-        "explanation": (
-            "A **linear equation** has the form y = mx + b, where:\n"
-            "• m = slope (rate of change)\n"
-            "• b = y-intercept (where the line crosses the y-axis)\n\n"
-            "**Finding slope from two points (x₁,y₁) and (x₂,y₂):**\n"
-            "  m = (y₂ - y₁) / (x₂ - x₁)\n\n"
-            "**Forms of linear equations:**\n"
-            "• Slope-Intercept: y = mx + b\n"
-            "• Point-Slope: y - y₁ = m(x - x₁)\n"
-            "• Standard: Ax + By = C"
-        ),
+        "explanation": "Linear equation y = mx + b. m = slope, b = y-intercept.",
     },
-    # Physics
     "newton": {
         "subject": "Physics",
         "explanation": (
-            "**Newton's Laws of Motion:**\n\n"
-            "**1st Law (Inertia):** An object at rest stays at rest, and an object in motion stays "
-            "in motion unless acted on by an external force.\n\n"
-            "**2nd Law:** F = ma (Force = mass × acceleration)\n"
-            "• This is the most useful law for problem-solving\n"
-            "• Units: Force in Newtons (N), mass in kg, acceleration in m/s²\n\n"
-            "**3rd Law:** For every action, there is an equal and opposite reaction.\n\n"
-            "**Example:** A 5 kg box is pushed with 20 N of force.\n"
-            "• a = F/m = 20/5 = **4 m/s²**"
+            "Newton's Laws: 1st (Inertia), 2nd (F=ma), 3rd (action-reaction). "
+            "F=ma is the most useful for problem-solving."
         ),
     },
     "energy": {
         "subject": "Physics",
-        "explanation": (
-            "**Energy** is the capacity to do work. Key types:\n\n"
-            "**Kinetic Energy:** KE = ½mv²\n"
-            "**Potential Energy:** PE = mgh\n"
-            "**Conservation of Energy:** Total energy in a closed system remains constant.\n\n"
-            "KE₁ + PE₁ = KE₂ + PE₂\n\n"
-            "**Work-Energy Theorem:** W = ΔKE = KEf - KEi\n"
-            "**Power:** P = W/t = F·v (watts)"
-        ),
+        "explanation": "KE = ½mv², PE = mgh. Conservation: total energy is constant in closed systems.",
     },
-    # Biology
     "mitosis": {
         "subject": "Biology",
-        "explanation": (
-            "**Mitosis** is cell division that produces two identical daughter cells.\n\n"
-            "**Phases:**\n"
-            "1. **Prophase:** Chromosomes condense, spindle forms\n"
-            "2. **Metaphase:** Chromosomes align at the cell's equator\n"
-            "3. **Anaphase:** Sister chromatids separate and move to poles\n"
-            "4. **Telophase:** Nuclear envelopes reform, chromosomes decondense\n"
-            "5. **Cytokinesis:** Cytoplasm divides\n\n"
-            "**Mitosis vs Meiosis:**\n"
-            "• Mitosis → 2 identical diploid (2n) cells (growth/repair)\n"
-            "• Meiosis → 4 unique haploid (n) cells (gametes/reproduction)"
-        ),
+        "explanation": "Mitosis: prophase → metaphase → anaphase → telophase → cytokinesis. Produces 2 identical diploid cells.",
     },
     "meiosis": {
         "subject": "Biology",
-        "explanation": (
-            "**Meiosis** produces four genetically unique haploid cells (gametes).\n\n"
-            "**Meiosis I (Reductive Division):**\n"
-            "• Homologous chromosomes pair up and cross over\n"
-            "• Genetic recombination creates diversity\n"
-            "• Homologs separate → two haploid cells\n\n"
-            "**Meiosis II (Similar to Mitosis):**\n"
-            "• Sister chromatids separate\n"
-            "• Results in 4 haploid cells\n\n"
-            "**Key differences from mitosis:**\n"
-            "• Two divisions instead of one\n"
-            "• Crossing over and independent assortment\n"
-            "• Produces haploid (n) cells, not diploid (2n)"
-        ),
+        "explanation": "Meiosis: two divisions producing 4 haploid gametes. Includes crossing over for genetic diversity.",
     },
     "photosynthesis": {
         "subject": "Biology",
-        "explanation": (
-            "**Photosynthesis** converts light energy into chemical energy (glucose).\n\n"
-            "**Overall equation:** 6CO₂ + 6H₂O + light → C₆H₁₂O₆ + 6O₂\n\n"
-            "**Two stages:**\n\n"
-            "**1. Light-Dependent Reactions (Thylakoid membrane):**\n"
-            "• Water is split (photolysis): 2H₂O → 4H⁺ + 4e⁻ + O₂\n"
-            "• Light energy → ATP + NADPH\n\n"
-            "**2. Calvin Cycle (Stroma):**\n"
-            "• CO₂ is fixed by RuBisCO enzyme\n"
-            "• Uses ATP and NADPH from light reactions\n"
-            "• Produces G3P → glucose\n\n"
-            "**Factors affecting rate:** Light intensity, CO₂ concentration, temperature"
-        ),
+        "explanation": "6CO₂ + 6H₂O + light → C₆H₁₂O₆ + 6O₂. Light reactions (thylakoid) + Calvin cycle (stroma).",
     },
-    # Chemistry
     "periodic table": {
         "subject": "Chemistry",
-        "explanation": (
-            "The **Periodic Table** organizes elements by atomic number and properties.\n\n"
-            "**Key trends:**\n"
-            "• **Atomic radius:** Decreases left→right, increases top→bottom\n"
-            "• **Electronegativity:** Increases left→right (F is most electronegative)\n"
-            "• **Ionization energy:** Increases left→right\n"
-            "• **Metallic character:** Increases right→left, top→bottom\n\n"
-            "**Groups (columns):**\n"
-            "• Group 1: Alkali metals (Li, Na, K…)\n"
-            "• Group 17: Halogens (F, Cl, Br…)\n"
-            "• Group 18: Noble gases (He, Ne, Ar…)"
-        ),
+        "explanation": "Elements organized by atomic number. Trends: atomic radius ↓ left→right, electronegativity ↑ left→right.",
     },
     "chemical bond": {
         "subject": "Chemistry",
-        "explanation": (
-            "**Chemical Bonds** hold atoms together in molecules.\n\n"
-            "**Types:**\n"
-            "• **Ionic:** Transfer of electrons (metal + nonmetal). Example: NaCl\n"
-            "• **Covalent:** Sharing of electrons (nonmetal + nonmetal). Example: H₂O\n"
-            "• **Metallic:** Sea of shared electrons (metal + metal). Example: Fe\n\n"
-            "**Covalent subtypes:**\n"
-            "• Nonpolar covalent: Equal sharing (H₂)\n"
-            "• Polar covalent: Unequal sharing (HCl)\n\n"
-            "**Bond strength:** Triple > Double > Single"
-        ),
+        "explanation": "Ionic (electron transfer), Covalent (electron sharing), Metallic (electron sea). Bond strength: triple > double > single.",
     },
-    # History
-    "world war": {
-        "subject": "History",
-        "explanation": (
-            "**World War II (1939-1945):**\n\n"
-            "**Key events:**\n"
-            "• 1939: Germany invades Poland; war begins\n"
-            "• 1940: Fall of France; Battle of Britain\n"
-            "• 1941: Operation Barbarossa; Pearl Harbor → US enters war\n"
-            "• 1942: Battle of Stalingrad; Midway (turning points)\n"
-            "• 1944: D-Day (Normandy landings)\n"
-            "• 1945: Fall of Berlin; Atomic bombs on Hiroshima/Nagasaki; Japan surrenders\n\n"
-            "**Aftermath:**\n"
-            "• United Nations founded\n"
-            "• Cold War begins\n"
-            "• ~70-85 million casualties worldwide"
-        ),
-    },
-    # Trigonometry
     "trigonometry": {
         "subject": "Mathematics",
-        "explanation": (
-            "**Trigonometry** studies relationships between angles and sides of triangles.\n\n"
-            "**SOH-CAH-TOA:**\n"
-            "• sin(θ) = Opposite / Hypotenuse\n"
-            "• cos(θ) = Adjacent / Hypotenuse\n"
-            "• tan(θ) = Opposite / Adjacent\n\n"
-            "**Key identities:**\n"
-            "• sin²θ + cos²θ = 1\n"
-            "• tan(θ) = sin(θ)/cos(θ)\n"
-            "• sin(2θ) = 2sin(θ)cos(θ)\n"
-            "• cos(2θ) = cos²θ - sin²θ\n\n"
-            "**Unit circle values:**\n"
-            "• sin(0°)=0, sin(30°)=½, sin(45°)=√2/2, sin(60°)=√3/2, sin(90°)=1"
-        ),
+        "explanation": "SOH-CAH-TOA. sin²θ + cos²θ = 1. Unit circle: sin(30°)=½, sin(45°)=√2/2, sin(60°)=√3/2.",
     },
     "probability": {
         "subject": "Statistics",
-        "explanation": (
-            "**Probability** measures the likelihood of an event occurring.\n\n"
-            "**P(A) = favorable outcomes / total outcomes** (0 ≤ P ≤ 1)\n\n"
-            "**Rules:**\n"
-            "• Complement: P(A') = 1 - P(A)\n"
-            "• Union: P(A∪B) = P(A) + P(B) - P(A∩B)\n"
-            "• Independent: P(A∩B) = P(A) × P(B)\n"
-            "• Conditional: P(A|B) = P(A∩B) / P(B)\n\n"
-            "**Bayes' Theorem:** P(A|B) = P(B|A)·P(A) / P(B)\n\n"
-            "**Distributions:**\n"
-            "• Binomial: P(X=k) = C(n,k)·p^k·(1-p)^(n-k)\n"
-            "• Normal: Bell curve, μ=mean, σ=standard deviation"
-        ),
+        "explanation": "P(A) = favorable/total. P(A∪B) = P(A)+P(B)-P(A∩B). Bayes: P(A|B) = P(B|A)·P(A)/P(B).",
+    },
+    "world war": {
+        "subject": "History",
+        "explanation": "WWII (1939-1945): Germany invades Poland, Pearl Harbor, D-Day, atomic bombs. ~70-85M casualties.",
     },
 }
 
-# Solver for basic math equations
+
+# ─────────────────────────────────────────────
+# Math equation solver (kept from original)
+# ─────────────────────────────────────────────
+
 def _solve_quadratic(a: float, b: float, c: float) -> str:
-    discriminant = b**2 - 4*a*c
+    discriminant = b**2 - 4 * a * c
     if discriminant > 0:
-        x1 = (-b + math.sqrt(discriminant)) / (2*a)
-        x2 = (-b - math.sqrt(discriminant)) / (2*a)
+        x1 = (-b + math.sqrt(discriminant)) / (2 * a)
+        x2 = (-b - math.sqrt(discriminant)) / (2 * a)
         return (
             f"Using the quadratic formula: x = (-b ± √(b²-4ac)) / 2a\n\n"
             f"• a = {a}, b = {b}, c = {c}\n"
@@ -276,20 +193,15 @@ def _solve_quadratic(a: float, b: float, c: float) -> str:
             f"**x₁ = {x1:.4g}**\n**x₂ = {x2:.4g}**"
         )
     elif discriminant == 0:
-        x = -b / (2*a)
+        x = -b / (2 * a)
         return f"Discriminant = 0 → **One repeated root: x = {x:.4g}**"
     else:
-        real = -b / (2*a)
-        imag = math.sqrt(-discriminant) / (2*a)
-        return (
-            f"Discriminant < 0 → **Two complex roots:**\n"
-            f"**x = {real:.4g} ± {imag:.4g}i**"
-        )
+        real = -b / (2 * a)
+        imag = math.sqrt(-discriminant) / (2 * a)
+        return f"Discriminant < 0 → **Two complex roots:** **x = {real:.4g} ± {imag:.4g}i**"
 
 
 def _try_solve_equation(query: str) -> str | None:
-    """Try to detect and solve simple math equations."""
-    # Pattern: ax² + bx + c = 0
     quad_match = re.search(
         r'(-?\d*)\s*x\s*[²^2]+\s*([+\-]\s*\d*)\s*x\s*([+\-]\s*\d+)\s*=\s*0',
         query.replace(' ', ''),
@@ -305,23 +217,12 @@ def _try_solve_equation(query: str) -> str | None:
             return _solve_quadratic(a, b, c)
         except ValueError:
             pass
-    
-    # Pattern: solve ax^2 + bx + c
-    quad_match2 = re.search(
-        r'(\d+)x\^?2\s*\+\s*(\d+)x\s*([+\-]\s*\d+)',
-        query.replace(' ', ''),
-    )
-    if quad_match2:
-        try:
-            a = float(quad_match2.group(1))
-            b = float(quad_match2.group(2))
-            c = float(quad_match2.group(3).replace(' ', ''))
-            return _solve_quadratic(a, b, c)
-        except ValueError:
-            pass
-
     return None
 
+
+# ─────────────────────────────────────────────
+# AI Tutor Service
+# ─────────────────────────────────────────────
 
 class AITutorService:
     def __init__(self, db: AsyncSession | None = None):
@@ -335,64 +236,158 @@ class AITutorService:
             return False
         return True
 
-    def _search_knowledge_base(self, query: str) -> str | None:
-        """Semantic keyword matching against the built-in knowledge base."""
+    # ── RAG: Gather student context ─────────────────────────
+
+    async def _build_student_context(self, user_id: UUID) -> str:
+        """Build a rich student context string from database data for RAG."""
+        if not self.db:
+            return "No student data available."
+
+        parts: list[str] = []
+
+        try:
+            # 1. Enrolled courses
+            courses_q = await self.db.execute(
+                select(Course.title, Course.subject)
+                .join(Enrollment, Enrollment.course_id == Course.id)
+                .where(Enrollment.student_user_id == user_id)
+            )
+            courses = courses_q.all()
+            if courses:
+                course_list = ", ".join(f"{c.title} ({c.subject})" for c in courses)
+                parts.append(f"**Enrolled Courses:** {course_list}")
+            else:
+                parts.append("**Enrolled Courses:** None yet")
+
+            # 2. Recent quiz performance
+            results_q = await self.db.execute(
+                select(QuizResult.score, QuizAttempt.created_at)
+                .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+                .where(QuizAttempt.student_user_id == user_id)
+                .order_by(QuizAttempt.created_at.desc())
+                .limit(10)
+            )
+            results = results_q.all()
+            if results:
+                scores = [r.score * 100 for r in results]
+                avg = sum(scores) / len(scores)
+                best = max(scores)
+                worst = min(scores)
+                parts.append(
+                    f"**Recent Quiz Performance:** {len(results)} quizzes taken, "
+                    f"Average: {avg:.0f}%, Best: {best:.0f}%, Lowest: {worst:.0f}%"
+                )
+                if avg < 60:
+                    parts.append("⚠️ Student is struggling — provide extra detail and encouragement.")
+                elif avg >= 85:
+                    parts.append("🌟 Student is performing well — offer advanced extensions and challenges.")
+            else:
+                parts.append("**Quiz Performance:** No quizzes taken yet — assume beginner level.")
+
+            # 3. Weak topics (from question-level analysis)
+            weak_q = await self.db.execute(
+                select(Question.topic_tags, Question.correct_index, QuizAttempt.answers)
+                .join(QuizAttempt, QuizAttempt.quiz_id == Question.quiz_id)
+                .where(
+                    QuizAttempt.student_user_id == user_id,
+                    QuizAttempt.submitted_at.isnot(None),
+                )
+                .limit(100)
+            )
+            weak_rows = weak_q.all()
+            topic_scores: dict[str, dict[str, int]] = {}
+            for tags, correct_idx, answers in weak_rows:
+                if not tags or not answers:
+                    continue
+                for tag in (tags if isinstance(tags, list) else [tags]):
+                    if tag not in topic_scores:
+                        topic_scores[tag] = {"correct": 0, "total": 0}
+                    topic_scores[tag]["total"] += 1
+
+            if topic_scores:
+                weak_topics = [
+                    t for t, s in topic_scores.items()
+                    if s["total"] >= 2 and (s["correct"] / s["total"]) < 0.6
+                ]
+                if weak_topics:
+                    parts.append(f"**Weak Topics Needing Review:** {', '.join(weak_topics[:8])}")
+
+        except Exception as e:
+            logger.error(f"Error building student context: {e}")
+            parts.append("Student context unavailable due to data error.")
+
+        return "\n".join(parts) if parts else "No student data available."
+
+    # ── RAG: Retrieve knowledge base snippets ───────────────
+
+    def _search_knowledge_base(self, query: str) -> str:
+        """Find relevant knowledge base entries for the query."""
         query_lower = query.lower()
-        
-        best_match = None
-        best_score = 0
-        
+        matches: list[str] = []
+
         for keyword, data in KNOWLEDGE_BASE.items():
-            # Check for keyword presence in query
             score = 0
             if keyword in query_lower:
-                score = len(keyword)  # Longer keyword matches are better
+                score = len(keyword)
             else:
-                # Check individual words
                 kw_words = keyword.split()
                 matched_words = sum(1 for w in kw_words if w in query_lower)
                 if matched_words > 0:
                     score = matched_words * 0.5
-            
-            if score > best_score:
-                best_score = score
-                best_match = data
 
-        if best_match and best_score > 0:
-            return best_match["explanation"]
-        return None
+            if score > 0:
+                matches.append(f"**{keyword.title()} ({data['subject']}):** {data['explanation']}")
 
-    async def _get_student_context(self, user_id: UUID) -> str:
-        """Fetch the student's recent quiz performance to personalize responses."""
+        if matches:
+            return "\n\n".join(matches[:3])  # Top 3 matches
+        return "No specific knowledge base entry found for this query."
+
+    # ── Conversation history ────────────────────────────────
+
+    async def _get_conversation_messages(self, user_id: UUID, conversation_id: UUID | None = None, limit: int = 10) -> list[dict[str, str]]:
+        """Get recent messages for multi-turn conversation context."""
         if not self.db:
-            return ""
-        
+            return []
+
         try:
-            # Get recent quiz results
-            results_q = await self.db.execute(
-                select(QuizResult.score, QuizResult.feedback)
-                .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
-                .where(QuizAttempt.student_user_id == user_id)
-                .order_by(QuizResult.created_at.desc())
-                .limit(5)
-            )
-            results = results_q.all()
-            
-            if results:
-                avg = sum(r.score for r in results) / len(results)
-                return f"\n\n💡 *Based on your recent quiz performance (avg: {avg*100:.0f}%), I've tailored this explanation to your level.*"
-            return ""
+            if conversation_id:
+                msgs_q = await self.db.execute(
+                    select(AIMessage.role, AIMessage.content)
+                    .where(AIMessage.conversation_id == conversation_id)
+                    .order_by(AIMessage.created_at.desc())
+                    .limit(limit)
+                )
+            else:
+                # Find latest conversation
+                conv_q = await self.db.execute(
+                    select(AIConversation.id)
+                    .where(AIConversation.user_id == user_id)
+                    .order_by(AIConversation.created_at.desc())
+                    .limit(1)
+                )
+                conv_id = conv_q.scalar_one_or_none()
+                if not conv_id:
+                    return []
+                msgs_q = await self.db.execute(
+                    select(AIMessage.role, AIMessage.content)
+                    .where(AIMessage.conversation_id == conv_id)
+                    .order_by(AIMessage.created_at.desc())
+                    .limit(limit)
+                )
+
+            messages = msgs_q.all()
+            return [{"role": m.role, "content": m.content} for m in reversed(messages)]
         except Exception:
-            return ""
+            return []
+
+    # ── Save message to DB ──────────────────────────────────
 
     async def _save_message(self, user_id: UUID, role: str, content: str, conversation_id: UUID | None = None) -> UUID | None:
-        """Persist conversation messages to the database."""
         if not self.db:
             return None
-        
+
         try:
             if not conversation_id:
-                # Find or create active conversation
                 conv_q = await self.db.execute(
                     select(AIConversation)
                     .where(AIConversation.user_id == user_id)
@@ -400,27 +395,21 @@ class AITutorService:
                     .limit(1)
                 )
                 conv = conv_q.scalar_one_or_none()
-                
-                # Check if last conversation has too many messages (start new one)
+
                 if conv:
                     msg_count = await self.db.execute(
-                        select(func.count(AIMessage.id)).where(
-                            AIMessage.conversation_id == conv.id
-                        )
+                        select(func.count(AIMessage.id)).where(AIMessage.conversation_id == conv.id)
                     )
                     if (msg_count.scalar() or 0) > 50:
                         conv = None
-                
+
                 if not conv:
-                    conv = AIConversation(
-                        user_id=user_id,
-                        title="AI Tutor Session",
-                    )
+                    conv = AIConversation(user_id=user_id, title="AI Tutor Session")
                     self.db.add(conv)
                     await self.db.flush()
-                
+
                 conversation_id = conv.id
-            
+
             msg = AIMessage(
                 conversation_id=conversation_id,
                 role=role,
@@ -434,11 +423,57 @@ class AITutorService:
             logger.error(f"Failed to save message: {e}")
             return None
 
+    # ── Gemini API call ─────────────────────────────────────
+
+    async def _call_gemini(self, query: str, student_context: str, knowledge_context: str, history: list[dict[str, str]]) -> str | None:
+        """Call Gemini API with the full RAG context. Returns None on failure."""
+        model = _get_gemini_model()
+        if model is None:
+            return None
+
+        try:
+            # Build the system prompt with RAG context
+            system = SYSTEM_PROMPT.format(
+                student_context=student_context,
+                knowledge_context=knowledge_context,
+            )
+
+            # Build conversation contents for Gemini
+            contents: list[dict[str, Any]] = []
+
+            # Add conversation history
+            for msg in history[-8:]:  # Last 8 messages for context window
+                gemini_role = "user" if msg["role"] == "user" else "model"
+                contents.append({"role": gemini_role, "parts": [msg["content"]]})
+
+            # Add the current user query
+            contents.append({"role": "user", "parts": [query]})
+
+            # Generate response
+            response = model.generate_content(
+                contents,
+                generation_config={
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                    "max_output_tokens": 2048,
+                },
+                system_instruction=system,
+            )
+
+            if response and response.text:
+                return response.text.strip()
+            return None
+
+        except Exception as e:
+            logger.error(f"Gemini API call failed: {e}")
+            return None
+
+    # ── Get conversation history (public) ───────────────────
+
     async def get_conversation_history(self, user_id: UUID, limit: int = 20) -> list[dict]:
-        """Retrieve recent conversation history."""
         if not self.db:
             return []
-        
+
         try:
             conv_q = await self.db.execute(
                 select(AIConversation)
@@ -449,7 +484,7 @@ class AITutorService:
             conv = conv_q.scalar_one_or_none()
             if not conv:
                 return []
-            
+
             msgs_q = await self.db.execute(
                 select(AIMessage)
                 .where(AIMessage.conversation_id == conv.id)
@@ -457,7 +492,7 @@ class AITutorService:
                 .limit(limit)
             )
             messages = msgs_q.scalars().all()
-            
+
             return [
                 {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat() if m.created_at else None}
                 for m in reversed(messages)
@@ -465,45 +500,123 @@ class AITutorService:
         except Exception:
             return []
 
-    async def get_tutor_response(self, query: str, user_id: str | UUID) -> str:
-        """Main entry point — generates an intelligent response."""
+    # ── List all conversations ──────────────────────────────
+
+    async def list_conversations(self, user_id: UUID) -> list[dict]:
+        if not self.db:
+            return []
+
+        try:
+            convs_q = await self.db.execute(
+                select(AIConversation)
+                .where(AIConversation.user_id == user_id)
+                .order_by(AIConversation.created_at.desc())
+                .limit(20)
+            )
+            convs = convs_q.scalars().all()
+            return [
+                {
+                    "id": str(c.id),
+                    "title": c.title,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in convs
+            ]
+        except Exception:
+            return []
+
+    # ── Main entry point ────────────────────────────────────
+
+    async def get_tutor_response(self, query: str, user_id: str | UUID, conversation_id: str | UUID | None = None) -> str:
+        """Main entry — generates an intelligent RAG-powered response."""
         if not self.validate_query(query):
             return "Please provide a clear question so I can help you learn. Try asking about a specific topic like calculus, physics, or biology."
 
         uid = UUID(str(user_id)) if isinstance(user_id, str) else user_id
+        cid = UUID(str(conversation_id)) if conversation_id else None
 
         # Save user message
-        conv_id = await self._save_message(uid, "user", query)
+        conv_id = await self._save_message(uid, "user", query, cid)
 
-        # 1. Try to solve a math equation
+        # 1. Try to solve a math equation directly
         equation_result = _try_solve_equation(query)
         if equation_result:
             response = f"📐 **Equation Solver**\n\n{equation_result}"
-            context = await self._get_student_context(uid)
-            response += context
             await self._save_message(uid, "assistant", response, conv_id)
             return response
 
-        # 2. Search knowledge base
-        kb_result = self._search_knowledge_base(query)
+        # 2. Build RAG context
+        student_context = await self._build_student_context(uid)
+        knowledge_context = self._search_knowledge_base(query)
+        history = await self._get_conversation_messages(uid, conv_id)
+
+        # 3. Try Gemini API
+        gemini_response = await self._call_gemini(query, student_context, knowledge_context, history)
+        if gemini_response:
+            await self._save_message(uid, "assistant", gemini_response, conv_id)
+            return gemini_response
+
+        # 4. Fallback: use knowledge base directly
+        kb_result = self._search_knowledge_base_full(query)
         if kb_result:
-            context = await self._get_student_context(uid)
-            response = f"📚 **AI Tutor Response**\n\n{kb_result}{context}"
+            response = f"📚 **AI Tutor Response**\n\n{kb_result}"
+            context_note = await self._get_student_performance_note(uid)
+            response += context_note
             await self._save_message(uid, "assistant", response, conv_id)
             return response
 
-        # 3. General educational response with topic detection
-        response = self._generate_educational_response(query)
-        context = await self._get_student_context(uid)
-        response += context
+        # 5. Fallback: generic educational response
+        response = self._generate_fallback_response(query)
         await self._save_message(uid, "assistant", response, conv_id)
         return response
 
-    def _generate_educational_response(self, query: str) -> str:
-        """Generate a helpful response for topics not in the knowledge base."""
-        query_lower = query.lower()
+    # ── Fallback helpers ────────────────────────────────────
 
-        # Detect subject area
+    def _search_knowledge_base_full(self, query: str) -> str | None:
+        """Full-text knowledge base search (fallback when Gemini is unavailable)."""
+        query_lower = query.lower()
+        best_match = None
+        best_score = 0
+
+        for keyword, data in KNOWLEDGE_BASE.items():
+            score = 0
+            if keyword in query_lower:
+                score = len(keyword)
+            else:
+                kw_words = keyword.split()
+                matched_words = sum(1 for w in kw_words if w in query_lower)
+                if matched_words > 0:
+                    score = matched_words * 0.5
+
+            if score > best_score:
+                best_score = score
+                best_match = data
+
+        if best_match and best_score > 0:
+            return best_match["explanation"]
+        return None
+
+    async def _get_student_performance_note(self, user_id: UUID) -> str:
+        if not self.db:
+            return ""
+        try:
+            results_q = await self.db.execute(
+                select(QuizResult.score)
+                .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+                .where(QuizAttempt.student_user_id == user_id)
+                .order_by(QuizResult.created_at.desc())
+                .limit(5)
+            )
+            results = results_q.all()
+            if results:
+                avg = sum(r.score for r in results) / len(results)
+                return f"\n\n💡 *Based on your recent performance (avg: {avg*100:.0f}%), I've tailored this explanation to your level.*"
+            return ""
+        except Exception:
+            return ""
+
+    def _generate_fallback_response(self, query: str) -> str:
+        query_lower = query.lower()
         subject_hints = {
             "math": ["calculate", "solve", "equation", "formula", "graph", "function", "algebra", "geometry", "math"],
             "physics": ["force", "velocity", "acceleration", "momentum", "wave", "electric", "magnetic", "gravity", "physics"],
@@ -532,12 +645,11 @@ class AITutorService:
         return (
             f"🤔 **Great question!**\n\n"
             f"I understand you're asking about a topic related to **{detected.capitalize()}**. "
-            f"While I don't have a detailed lesson on this specific topic yet, here's my approach:\n\n"
+            f"While I'm currently operating in offline mode (no AI API key configured), here's my approach:\n\n"
             f"**Study Tip:** {tips[detected]}\n\n"
             f"**What you can do:**\n"
             f"1. Review your course materials on this topic\n"
             f"2. Practice with related quiz questions on the platform\n"
-            f"3. Try rephrasing your question with more specific terms\n"
-            f"4. Ask your teacher to create a focused quiz on this area\n\n"
-            f"*The AI knowledge base is continuously expanding. Your question helps me learn what to cover next!*"
+            f"3. Try rephrasing your question with more specific terms\n\n"
+            f"*Configure a Gemini API key to unlock full AI-powered tutoring!*"
         )

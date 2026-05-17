@@ -1,5 +1,6 @@
-"""AI Tutor API endpoint with conversation history and streaming support."""
+"""AI Tutor API — RAG-powered conversational tutoring with Gemini."""
 
+from uuid import UUID
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -11,13 +12,18 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 class TutorQuery(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
+    conversation_id: str | None = Field(default=None, description="Optional conversation ID to continue a specific thread")
 
 
 @router.post("/tutor/query")
 async def tutor_query(payload: TutorQuery, db: DbSession, user: CurrentUser) -> dict:
-    """Send a question to the AI Tutor and receive an intelligent response."""
+    """Send a question to the AI Tutor and receive an intelligent RAG-powered response."""
     service = AITutorService(db=db)
-    response = await service.get_tutor_response(payload.query, user_id=user.id)
+    response = await service.get_tutor_response(
+        payload.query,
+        user_id=user.id,
+        conversation_id=payload.conversation_id,
+    )
     return {"response": response}
 
 
@@ -28,13 +34,19 @@ async def tutor_history(db: DbSession, user: CurrentUser) -> list[dict]:
     return await service.get_conversation_history(user.id, limit=50)
 
 
+@router.get("/tutor/conversations")
+async def tutor_conversations(db: DbSession, user: CurrentUser) -> list[dict]:
+    """List all of the user's AI Tutor conversation sessions."""
+    service = AITutorService(db=db)
+    return await service.list_conversations(user.id)
+
+
 @router.delete("/tutor/history")
 async def clear_history(db: DbSession, user: CurrentUser) -> dict:
     """Clear the user's AI conversation history."""
-    from sqlalchemy import select, delete
+    from sqlalchemy import select
     from app.infrastructure.models.ai_data import AIConversation
 
-    # Delete all conversations for this user
     convs = await db.execute(
         select(AIConversation.id).where(AIConversation.user_id == user.id)
     )

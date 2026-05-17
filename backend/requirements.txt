@@ -20,6 +20,7 @@ celery==5.4.0
 
 python-multipart==0.0.17
 httpx==0.28.1
+google-generativeai>=0.8.0
 
 # Optional: native C++ bridge (build cpp-engine first)
 # pybind11==2.13.6

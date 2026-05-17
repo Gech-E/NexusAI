@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     onnx_models_path: str = Field(default="../ai-models/onnx", alias="ONNX_MODELS_PATH")
     embeddings_dim: int = Field(default=384, alias="EMBEDDINGS_DIM")
 
+    # Gemini AI
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors(cls, v: str | list[str]) -> list[str]:
