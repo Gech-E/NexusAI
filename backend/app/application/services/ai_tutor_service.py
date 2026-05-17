@@ -595,19 +595,27 @@ class AITutorService:
 
     async def _call_gemini(self, query: str, student_context: str, knowledge_context: str, history: list[dict[str, str]]) -> str | None:
         """Call Gemini API with the full RAG context. Returns None on failure."""
-        model = _get_gemini_model()
-        if model is None:
+        from app.core.config import settings
+        if not settings.gemini_api_key:
             return None
 
         try:
+            import google.generativeai as genai
+            
             # Build the system prompt with RAG context
             system = SYSTEM_PROMPT.format(
                 student_context=student_context,
                 knowledge_context=knowledge_context,
             )
 
+            # Instantiate model with system instruction
+            model = genai.GenerativeModel(
+                settings.gemini_model,
+                system_instruction=system
+            )
+
             # Build conversation contents for Gemini
-            contents: list[dict[str, Any]] = []
+            contents = []
 
             # Add conversation history
             for msg in history[-8:]:  # Last 8 messages for context window
@@ -624,8 +632,7 @@ class AITutorService:
                     "temperature": 0.7,
                     "top_p": 0.9,
                     "max_output_tokens": 2048,
-                },
-                system_instruction=system,
+                }
             )
 
             if response and response.text:
