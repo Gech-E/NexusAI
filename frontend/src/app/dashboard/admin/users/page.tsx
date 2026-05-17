@@ -45,7 +45,7 @@ export default function AdminUsers() {
   const toggleActive = async (userId: string) => {
     if (!accessToken) return;
     try {
-      const res = await fetch(apiUrl(``), {
+      const res = await fetch(apiUrl(`/api/v1/admin/users/${userId}/toggle-active`), {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
