@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowRight, BrainCircuit, ShieldAlert, WifiOff, BarChart3,
   GraduationCap, Zap, Globe, CheckCircle2, Menu, X,
-  ChevronRight, Star, Users, BookOpen
+  ChevronRight, Star, BookOpen
 } from 'lucide-react';
 import Link from 'next/link';
 
