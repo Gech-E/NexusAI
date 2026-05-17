@@ -134,7 +134,7 @@ export default function CoursesPage() {
                       className="h-full bg-cyan-500 rounded-full" />
                   </div>
                   <button 
-                    onClick={() => router.push('/dashboard/student/quizzes')}
+                    onClick={() => router.push(`/dashboard/student/courses/${course.course_id}`)}
                     className="w-full mt-5 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                   >
                     <Play className="w-4 h-4 fill-current" /> Continue
