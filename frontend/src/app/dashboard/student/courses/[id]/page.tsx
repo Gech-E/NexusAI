@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { BookOpen, BrainCircuit, Play, ChevronLeft, Loader2, Award } from 'lucide-react';
+import { BookOpen, BrainCircuit, Play, ChevronLeft, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { apiUrl } from '@/lib/api';
 
@@ -40,6 +40,7 @@ export default function CourseDetailPage() {
         
         if (enrolledRes.ok) {
           const enrolledData = await enrolledRes.json();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const currentEnrollment = enrolledData.find((e: any) => e.course_id === courseId);
           if (currentEnrollment) {
             setProgress(currentEnrollment.progress);

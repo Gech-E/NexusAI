@@ -57,6 +57,7 @@ export default function AIInsights() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchInsights(); }, [accessToken]);
 
   const handleRefresh = () => { setRefreshing(true); fetchInsights(); };

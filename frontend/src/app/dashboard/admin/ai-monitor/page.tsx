@@ -74,6 +74,7 @@ export default function AIMonitor() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchStats(); }, [accessToken]);
 
   const handleRefresh = () => {

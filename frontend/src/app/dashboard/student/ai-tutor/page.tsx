@@ -35,6 +35,7 @@ const suggestedPrompts = [
 
 const playMessageSound = () => {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const audioCtx = new AudioContextClass();
@@ -54,7 +55,7 @@ const playMessageSound = () => {
     
     oscillator.start();
     oscillator.stop(audioCtx.currentTime + 0.15);
-  } catch (e) {
+  } catch (_e) {
     // Ignore if audio fails
   }
 };
