@@ -13,18 +13,14 @@ from app.infrastructure.database import engine, init_db
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.app_env == "development":
         await init_db()
-        # Auto-seed demo data if database is empty
-        try:
-            from scripts.seed import run_seed
-            await run_seed()
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Seed skipped: {e}")
     yield
     await engine.dispose()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan, version="1.0.0")
+
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,

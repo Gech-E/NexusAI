@@ -3,16 +3,16 @@ version: '3.8'
 services:
   # ── Database ──
   db:
-    image: postgres:15
+    image: postgres:18
     container_name: nexus_db
     environment:
       POSTGRES_USER: nexus_user
-      POSTGRES_PASSWORD: nexus_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: nexus_learnai
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexus_learnai"]
@@ -31,6 +31,18 @@ services:
       interval: 10s
       retries: 3
 
+  # ── Redis Exporter (Prometheus metrics) ──
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: nexus_redis_exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   # ── Backend API ──
   backend:
     build:
@@ -38,7 +50,7 @@ services:
       dockerfile: Dockerfile
     container_name: nexus_backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://nexus_user:nexus_password@db:5432/nexus_learnai
+      DATABASE_URL: postgresql+asyncpg://nexus_user:${POSTGRES_PASSWORD}@db:5432/nexus_learnai
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -63,7 +75,7 @@ services:
     container_name: nexus_celery
     command: celery -A app.celery_app worker --loglevel=info --concurrency=2
     environment:
-      DATABASE_URL: postgresql+asyncpg://nexus_user:nexus_password@db:5432/nexus_learnai
+      DATABASE_URL: postgresql+asyncpg://nexus_user:${POSTGRES_PASSWORD}@db:5432/nexus_learnai
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -119,7 +131,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: nexus_admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
