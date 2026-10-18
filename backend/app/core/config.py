@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     app_name: str = "Nexus LearnAI API"
     app_env: Literal["development", "staging", "production"] = "development"
     debug: bool = False
+    allow_public_registration: bool = False
     api_v1_prefix: str = "/api/v1"
 
     jwt_secret_key: str = Field(
