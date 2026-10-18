@@ -35,7 +35,10 @@ async def get_current_user(
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
-    user_id = UUID(sub)
+    try:
+        user_id = UUID(sub)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from None
     result = await db.execute(
         select(User)
         .options(selectinload(User.roles))
