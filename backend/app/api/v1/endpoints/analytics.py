@@ -62,10 +62,10 @@ async def my_summary(db: DbSession, user: CurrentUser) -> dict:
         "skill_mastery": round(avg_score * 100, 1),
         "completed_quizzes": completed_quizzes,
         "enrolled_courses": enrolled_courses,
-        "active_offline": True,
-        "weekly_improvement": 12.5,
+        "active_offline": False,
+        "weekly_improvement": 0.0,
         "pending_assignments": pending,
-        "ai_sessions_hours": 5.2,
+        "ai_sessions_hours": 0.0,
     }
 
 
