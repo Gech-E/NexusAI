@@ -8,9 +8,11 @@ services:
     rootDir: backend
     dockerfilePath: backend/Dockerfile
     healthCheckPath: /api/v1/health/ready
-    preDeployCommand: cd /app && alembic upgrade head
+    # Free web services do not support pre-deploy commands.
+    # For the portfolio demo, initialize the empty DB on process startup.
+    dockerCommand: sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1'
     autoDeployTrigger: off
-    plan: starter
+    plan: free
     envVars:
       - key: APP_ENV
         value: production
@@ -36,5 +38,5 @@ databases:
   - name: nexus-learnai-postgres
     databaseName: nexus_learnai
     user: nexus_learnai
-    plan: basic-256mb
+    plan: free
     postgresMajorVersion: "17"
