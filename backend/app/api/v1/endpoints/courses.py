@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.deps import CurrentUser, DbSession, require_roles
+from app.core.permissions import require_school, is_platform_admin, user_school_ids
 from app.infrastructure.models.academic import Course, Enrollment
 from app.infrastructure.models.user import UserRole
 
@@ -38,7 +39,11 @@ class EnrollmentRead(BaseModel):
 
 @router.get("", response_model=list[CourseRead])
 async def list_courses(db: DbSession, user: CurrentUser) -> list[Course]:
-    result = await db.execute(select(Course).order_by(Course.created_at.desc()).limit(50))
+    schools = await user_school_ids(db, user)
+    query = select(Course)
+    if not is_platform_admin(user):
+        query = query.where(Course.school_id.in_(schools))
+    result = await db.execute(query.order_by(Course.created_at.desc()).limit(50))
     return list(result.scalars().all())
 
 
@@ -48,8 +53,10 @@ async def list_courses(db: DbSession, user: CurrentUser) -> list[Course]:
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
 async def create_course(payload: CourseCreate, db: DbSession, user: CurrentUser) -> Course:
+    await require_school(db, user, payload.school_id)
     course = Course(
         school_id=payload.school_id,
+        teacher_user_id=user.id if not is_platform_admin(user) else None,
         title=payload.title,
         subject=payload.subject,
         description=payload.description,
@@ -84,6 +91,7 @@ async def enroll_in_course(course_id: UUID, db: DbSession, user: CurrentUser) ->
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    await require_school(db, user, course.school_id)
 
     existing = await db.execute(
         select(Enrollment).where(
@@ -145,6 +153,8 @@ async def get_course_detail(course_id: UUID, db: DbSession, user: CurrentUser) -
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    await require_school(db, user, course.school_id)
+
     # Enrollment count
     enroll_q = await db.execute(
         select(func.count(Enrollment.id)).where(Enrollment.course_id == course_id)
@@ -169,6 +179,20 @@ async def get_course_detail(course_id: UUID, db: DbSession, user: CurrentUser) -
         "enrollment_count": enrollment_count,
         "quiz_count": quiz_count,
         "created_at": course.created_at.isoformat() if course.created_at else None,
+    }
+
+
+@router.get("/{course_id}/offline-pack")
+async def offline_course_pack(course_id: UUID, db: DbSession, user: CurrentUser) -> dict:
+    """Authorized downloadable text/syllabus, without access tokens or student data."""
+    course = await db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    await require_school(db, user, course.school_id)
+    return {
+        "id": str(course.id), "title": course.title,
+        "subject": course.subject, "description": course.description,
+        "syllabus": course.syllabus or {},
     }
 
 
@@ -200,11 +224,13 @@ async def update_progress(
     "/{course_id}",
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
-async def delete_course(course_id: UUID, db: DbSession) -> dict:
+async def delete_course(course_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     """Delete a course (teacher/admin only)."""
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    if not is_platform_admin(user) and course.teacher_user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the course teacher can delete it")
     await db.delete(course)
     await db.commit()
     return {"status": "deleted", "course_id": str(course_id)}

@@ -5,6 +5,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -27,6 +28,30 @@ class AuthService:
         self.session = session
 
     async def register(self, data: RegisterRequest) -> TokenPair:
+        from fastapi import HTTPException, status
+
+        # Self-service registration must never grant privileged roles.
+        if data.role not in (None, "student"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher and administrator roles require administrator approval",
+            )
+
+        if not settings.allow_public_registration:
+            if not data.invite_token:
+                raise HTTPException(status_code=403, detail="A school invitation is required")
+            payload = decode_token_safe(data.invite_token)
+            if (
+                not payload
+                or payload.get("type") != "school_invitation"
+                or payload.get("email") != str(data.email).lower()
+                or payload.get("school_slug") != data.school_slug
+                or payload.get("role") != "student"
+            ):
+                raise HTTPException(status_code=403, detail="Invalid or expired school invitation")
+            if not data.school_slug:
+                raise HTTPException(status_code=422, detail="School is required")
+
         existing = await self.session.execute(select(User).where(User.email == data.email))
         if existing.scalar_one_or_none():
             from fastapi import HTTPException, status
@@ -41,14 +66,13 @@ class AuthService:
         self.session.add(user)
         await self.session.flush()
 
-        # Assign the requested role, default to STUDENT
-        role_map = {"teacher": UserRole.TEACHER, "admin": UserRole.ADMIN}
-        assigned_role = role_map.get(data.role, UserRole.STUDENT) if data.role else UserRole.STUDENT
-        self.session.add(UserRoleAssignment(user_id=user.id, role=assigned_role))
+        self.session.add(UserRoleAssignment(user_id=user.id, role=UserRole.STUDENT))
 
         if data.school_slug:
             res = await self.session.execute(select(School).where(School.slug == data.school_slug))
             school = res.scalar_one_or_none()
+            if not school:
+                raise HTTPException(status_code=404, detail="School not found")
             if school:
                 self.session.add(
                     StudentProfile(user_id=user.id, school_id=school.id, metadata_={}),
@@ -82,10 +106,10 @@ class AuthService:
 
         token_hash = _hash_refresh(refresh_token)
         res = await self.session.execute(
-            select(RefreshToken).where(RefreshToken.jti == str(jti), RefreshToken.revoked_at.is_(None))
+            select(RefreshToken).where(RefreshToken.jti == str(jti), RefreshToken.revoked_at.is_(None)).with_for_update()
         )
         row = res.scalar_one_or_none()
-        if row is None or row.token_hash != token_hash:
+        if row is None or row.token_hash != token_hash or str(row.user_id) != str(sub):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token revoked or unknown")
         if row.expires_at < datetime.now(tz=UTC):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
@@ -98,6 +122,21 @@ class AuthService:
         row.revoked_at = datetime.now(tz=UTC)
         await self.session.flush()
         return await self._issue_tokens(user)
+
+    async def logout(self, token: str) -> None:
+        payload = decode_token_safe(token)
+        if not payload or payload.get("type") != "refresh":
+            return
+        row = (await self.session.execute(
+            select(RefreshToken).where(
+                RefreshToken.jti == str(payload.get("jti")),
+                RefreshToken.token_hash == _hash_refresh(token),
+                RefreshToken.revoked_at.is_(None),
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if row and str(row.user_id) == str(payload.get("sub")):
+            row.revoked_at = datetime.now(tz=UTC)
+            await self.session.commit()
 
     async def _issue_tokens(self, user: User) -> TokenPair:
         role_rows = await self.session.execute(select(UserRoleAssignment).where(UserRoleAssignment.user_id == user.id))

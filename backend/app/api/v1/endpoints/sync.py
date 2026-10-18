@@ -1,91 +1,116 @@
-"""Offline sync endpoints — bulk data ingestion and sync status."""
+"""Offline sync applies a narrowly validated set of domain mutations.
 
+Quiz attempt submissions use /quizzes/{id}/submit and are not duplicated here.
+"""
 import hashlib
 import json
-from typing import Any
+from math import isfinite
+from typing import Any, Literal
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
 from app.deps import CurrentUser, DbSession
+from app.infrastructure.models.academic import Enrollment
 from app.infrastructure.models.sync import OfflineSyncLog
 
 router = APIRouter()
 
 
 class SyncRecord(BaseModel):
-    entity_type: str  # e.g. "quiz_attempt", "study_session"
-    entity_id: str
-    operation: str = Field(default="upsert")  # "create", "update", "upsert"
+    entity_type: Literal["course_progress"]
+    entity_id: str = Field(min_length=1, max_length=64)
+    operation: Literal["upsert"] = "upsert"
     data: dict[str, Any] = Field(default_factory=dict)
 
 
 class SyncPayload(BaseModel):
     device_id: str = Field(min_length=1, max_length=128)
-    records: list[SyncRecord] = Field(default_factory=list)
+    records: list[SyncRecord] = Field(default_factory=list, max_length=100)
 
 
 @router.post("/bulk", status_code=status.HTTP_201_CREATED)
-async def bulk_sync(
-    payload: SyncPayload,
-    db: DbSession,
-    user: CurrentUser,
-) -> dict:
-    """
-    Ingests a batch of offline-collected data and logs each record
-    into the OfflineSyncLog table for auditing and conflict resolution.
-    """
-    synced = 0
-    errors = []
+async def bulk_sync(payload: SyncPayload, db: DbSession, user: CurrentUser) -> dict:
+    """Apply progress events, preserving the higher completed percentage on conflicts.
 
+    An unsupported entity fails validation before any records are applied.
+    Enrollment ownership is checked for every event; all events commit together.
+    """
+    # Parse and validate the entire batch before mutating domain tables.
+    parsed: list[tuple[SyncRecord, UUID, float, str]] = []
     for record in payload.records:
         try:
-            # Compute payload hash for deduplication
-            payload_hash = hashlib.sha256(
-                json.dumps(record.data, sort_keys=True, default=str).encode()
-            ).hexdigest()
+            course_id = UUID(record.entity_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid course ID") from None
+        value = record.data.get("progress_pct")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise HTTPException(status_code=422, detail="progress_pct must be a number")
+        progress = float(value)
+        if not isfinite(progress) or not 0 <= progress <= 100:
+            raise HTTPException(status_code=422, detail="progress_pct must be between 0 and 100")
+        hash_value = hashlib.sha256(json.dumps(
+            {"progress_pct": progress}, sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
+        parsed.append((record, course_id, progress, hash_value))
 
-            # Check for duplicate (same device, entity, and hash)
-            existing_q = await db.execute(
-                select(OfflineSyncLog).where(
-                    OfflineSyncLog.device_id == payload.device_id,
-                    OfflineSyncLog.entity_type == record.entity_type,
-                    OfflineSyncLog.entity_id == record.entity_id,
-                    OfflineSyncLog.payload_hash == payload_hash,
-                ).limit(1)
-            )
-            if existing_q.scalars().first():
-                # Skip duplicate
-                continue
+    synced = 0
+    duplicates = 0
+    seen: set[tuple[UUID, str]] = set()
+    for record, course_id, progress, hash_value in parsed:
+        batch_key = (course_id, hash_value)
+        if batch_key in seen:
+            duplicates += 1
+            continue
+        seen.add(batch_key)
 
-            log = OfflineSyncLog(
-                device_id=payload.device_id,
-                user_id=user.id,
-                operation=record.operation,
-                entity_type=record.entity_type,
-                entity_id=record.entity_id,
-                payload_hash=payload_hash,
-                status="synced",
-                detail=record.data,
-            )
-            db.add(log)
-            synced += 1
-        except Exception as e:
-            errors.append({
-                "entity_type": record.entity_type,
-                "entity_id": record.entity_id,
-                "error": str(e),
-            })
+        enrollment = (await db.execute(
+            select(Enrollment).where(
+                Enrollment.student_user_id == user.id,
+                Enrollment.course_id == course_id,
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if enrollment is None:
+            raise HTTPException(status_code=403, detail="Course enrollment not found")
 
-    if synced > 0:
+        existing = (await db.execute(
+            select(OfflineSyncLog.id).where(
+                OfflineSyncLog.user_id == user.id,
+                OfflineSyncLog.device_id == payload.device_id,
+                OfflineSyncLog.entity_type == record.entity_type,
+                OfflineSyncLog.entity_id == record.entity_id,
+                OfflineSyncLog.operation == record.operation,
+                OfflineSyncLog.payload_hash == hash_value,
+            ).limit(1)
+        )).scalar_one_or_none()
+        if existing:
+            duplicates += 1
+            continue
+
+        # Completion never goes backwards if an older device synchronizes later.
+        enrollment.progress_pct = max(enrollment.progress_pct, progress)
+        db.add(OfflineSyncLog(
+            device_id=payload.device_id,
+            user_id=user.id,
+            operation=record.operation,
+            entity_type=record.entity_type,
+            entity_id=record.entity_id,
+            payload_hash=hash_value,
+            status="synced",
+            detail={"progress_pct": progress},
+        ))
+        synced += 1
+
+    if synced:
         await db.commit()
-
     return {
-        "status": "success" if not errors else "partial",
+        "status": "success",
         "synced": synced,
-        "skipped_duplicates": len(payload.records) - synced - len(errors),
-        "errors": errors,
+        "skipped_duplicates": duplicates,
+        "errors": [],
         "device_id": payload.device_id,
     }
 
@@ -94,7 +119,7 @@ async def bulk_sync(
 async def sync_status(
     db: DbSession,
     user: CurrentUser,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=100),
 ) -> dict:
     """Returns sync history for the authenticated user."""
     # Get recent sync logs

@@ -9,6 +9,7 @@ from sqlalchemy import select, func, case, and_
 from sqlalchemy.orm import selectinload
 
 from app.deps import CurrentUser, DbSession, require_roles
+from app.core.permissions import user_school_ids, is_platform_admin
 from app.infrastructure.models.academic import Course, Enrollment
 from app.infrastructure.models.analytics import AnalyticsSnapshot
 from app.infrastructure.models.assessment import Question, Quiz, QuizAttempt, QuizResult
@@ -62,10 +63,10 @@ async def my_summary(db: DbSession, user: CurrentUser) -> dict:
         "skill_mastery": round(avg_score * 100, 1),
         "completed_quizzes": completed_quizzes,
         "enrolled_courses": enrolled_courses,
-        "active_offline": True,
-        "weekly_improvement": 12.5,
+        "active_offline": False,
+        "weekly_improvement": 0.0,
         "pending_assignments": pending,
-        "ai_sessions_hours": 5.2,
+        "ai_sessions_hours": 0.0,
     }
 
 
@@ -138,8 +139,43 @@ async def my_detailed_analytics(db: DbSession, user: CurrentUser) -> dict:
 
 
 # ─────────────────────────────────────────────
-# Teacher analytics
+# School-scoped teacher analytics
 # ─────────────────────────────────────────────
+
+async def _school_scope(db: DbSession, user: User) -> set[UUID] | None:
+    """None means platform admin; an empty set means no accessible schools."""
+    if is_platform_admin(user):
+        return None
+    return await user_school_ids(db, user)
+
+
+def _quiz_filter(query, schools: set[UUID] | None):
+    return query if schools is None else query.where(Quiz.school_id.in_(schools))
+
+
+async def _student_roster(db: DbSession, schools: set[UUID] | None) -> list[User]:
+    query = (
+        select(User)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .join(UserRoleAssignment, UserRoleAssignment.user_id == User.id)
+        .where(UserRoleAssignment.role == UserRole.STUDENT, User.is_active.is_(True))
+        .order_by(User.full_name)
+        .limit(200)
+    )
+    if schools is not None:
+        query = query.where(StudentProfile.school_id.in_(schools))
+    return list((await db.execute(query)).scalars().unique().all())
+
+
+async def _school_results(db: DbSession, schools: set[UUID] | None) -> list[tuple]:
+    """Read only results for quizzes belonging to the teacher's institutions."""
+    query = (
+        select(QuizAttempt.student_user_id, QuizResult.score, QuizAttempt.quiz_id, QuizAttempt.created_at)
+        .join(QuizResult, QuizResult.attempt_id == QuizAttempt.id)
+        .join(Quiz, QuizAttempt.quiz_id == Quiz.id)
+        .limit(10000)
+    )
+    return list((await db.execute(_quiz_filter(query, schools))).all())
 
 
 @router.get("/teacher/summary")
@@ -147,35 +183,17 @@ async def teacher_summary(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> dict:
-    """Dashboard summary for teachers — powered by real DB data."""
-    # Count students (users with student role)
-    student_count_q = await db.execute(
-        select(func.count(UserRoleAssignment.id)).where(
-            UserRoleAssignment.role == UserRole.STUDENT
-        )
-    )
-    total_students = student_count_q.scalar() or 0
-
-    # Average score across all quiz results
-    avg_q = await db.execute(select(func.avg(QuizResult.score)))
-    avg_perf = avg_q.scalar() or 0.0
-
-    # Total quizzes created
-    quiz_count_q = await db.execute(select(func.count(Quiz.id)))
-    total_quizzes = quiz_count_q.scalar() or 0
-
-    # Active (un-submitted) attempts as proxy for "active alerts"
-    active_q = await db.execute(
-        select(func.count(QuizAttempt.id)).where(QuizAttempt.submitted_at.is_(None))
-    )
-    active_attempts = active_q.scalar() or 0
-
+    schools = await _school_scope(db, user)
+    students = await _student_roster(db, schools)
+    results = await _school_results(db, schools)
+    q = _quiz_filter(select(func.count(Quiz.id)), schools)
+    quizzes = (await db.execute(q)).scalar_one()
     return {
-        "active_students": total_students,
-        "avg_class_performance": round(avg_perf * 100, 1),
-        "active_alerts": min(active_attempts, 10),
-        "upcoming_exams": total_quizzes,
-        "student_trend": f"+{round(avg_perf * 10, 1)}%",
+        "active_students": len(students),
+        "avg_class_performance": round(100 * sum(row.score for row in results) / len(results), 1) if results else 0,
+        "active_alerts": 0,  # Unsubmitted attempts are NOT proctoring alerts.
+        "upcoming_exams": quizzes,
+        "student_trend": "No trend data",
     }
 
 
@@ -184,76 +202,27 @@ async def teacher_students(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> list[dict]:
-    """List all students with their performance metrics and risk level."""
-    # Get all student users
-    student_users_q = await db.execute(
-        select(User)
-        .join(UserRoleAssignment, UserRoleAssignment.user_id == User.id)
-        .where(UserRoleAssignment.role == UserRole.STUDENT, User.is_active.is_(True))
-        .order_by(User.full_name)
-    )
-    students = student_users_q.scalars().all()
-
-    result = []
-    for s in students:
-        # Quiz count & avg score for this student
-        stats_q = await db.execute(
-            select(
-                func.count(QuizResult.id).label("quiz_count"),
-                func.avg(QuizResult.score).label("avg_score"),
-            )
-            .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
-            .where(QuizAttempt.student_user_id == s.id)
-        )
-        row = stats_q.one()
-        quiz_count = row.quiz_count or 0
-        avg_score = float(row.avg_score or 0)
-        score_pct = round(avg_score * 100, 1)
-
-        # Risk assessment
-        if score_pct >= 75:
-            risk = "low"
-            trend = "up"
-        elif score_pct >= 55:
-            risk = "medium"
-            trend = "stable"
-        else:
-            risk = "high"
-            trend = "down"
-
-        # Last activity
-        last_q = await db.execute(
-            select(QuizAttempt.created_at)
-            .where(QuizAttempt.student_user_id == s.id)
-            .order_by(QuizAttempt.created_at.desc())
-            .limit(1)
-        )
-        last_row = last_q.scalar_one_or_none()
-        if last_row:
-            diff = datetime.now(tz=UTC) - last_row.replace(tzinfo=UTC) if last_row.tzinfo is None else datetime.now(tz=UTC) - last_row
-            if diff.total_seconds() < 60:
-                last_active = f"{int(diff.total_seconds())}s ago"
-            elif diff.total_seconds() < 3600:
-                last_active = f"{int(diff.total_seconds() // 60)}m ago"
-            elif diff.total_seconds() < 86400:
-                last_active = f"{int(diff.total_seconds() // 3600)}h ago"
-            else:
-                last_active = f"{int(diff.days)}d ago"
-        else:
-            last_active = "Never"
-
-        result.append({
+    schools = await _school_scope(db, user)
+    roster = await _student_roster(db, schools)
+    results = await _school_results(db, schools)
+    by_student: dict[UUID, list[float]] = {}
+    for row in results:
+        by_student.setdefault(row.student_user_id, []).append(float(row.score))
+    return [
+        {
             "id": str(s.id),
             "name": s.full_name,
             "email": s.email,
-            "score": score_pct,
-            "trend": trend,
-            "risk": risk,
-            "quizzes": quiz_count,
-            "lastActive": last_active,
-        })
-
-    return result
+            "score": round(100 * sum(by_student[s.id]) / len(by_student[s.id]), 1) if by_student.get(s.id) else 0,
+            "trend": "stable",
+            "risk": ("unknown" if not by_student.get(s.id) else
+                     "high" if sum(by_student[s.id]) / len(by_student[s.id]) < 0.55 else
+                     "medium" if sum(by_student[s.id]) / len(by_student[s.id]) < 0.75 else "low"),
+            "quizzes": len(by_student.get(s.id, [])),
+            "lastActive": "Unknown",
+        }
+        for s in roster
+    ]
 
 
 @router.get("/teacher/performance")
@@ -261,46 +230,32 @@ async def teacher_performance(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> dict:
-    """Class-level performance analytics for the teacher performance page."""
-    # Overall stats
-    total_results_q = await db.execute(select(func.count(QuizResult.id)))
-    total_results = total_results_q.scalar() or 0
-
-    avg_q = await db.execute(select(func.avg(QuizResult.score)))
-    overall_avg = float(avg_q.scalar() or 0)
-
-    # Pass rate (score >= 0.6)
-    pass_q = await db.execute(
-        select(func.count(QuizResult.id)).where(QuizResult.score >= 0.6)
-    )
-    pass_count = pass_q.scalar() or 0
-    pass_rate = round((pass_count / total_results * 100) if total_results > 0 else 0, 1)
-
-    # Per-course breakdown
-    courses_q = await db.execute(
-        select(Course).order_by(Course.created_at.desc()).limit(20)
-    )
-    courses = courses_q.scalars().all()
-    class_comparison = []
-    for c in courses:
-        cq = await db.execute(
-            select(func.avg(QuizResult.score), func.count(QuizResult.id))
-            .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
-            .join(Quiz, QuizAttempt.quiz_id == Quiz.id)
-            .where(Quiz.course_id == c.id)
+    schools = await _school_scope(db, user)
+    results = await _school_results(db, schools)
+    scores = [float(r.score) for r in results]
+    courses_q = select(Course).order_by(Course.created_at.desc()).limit(20)
+    if schools is not None:
+        courses_q = courses_q.where(Course.school_id.in_(schools))
+    courses = list((await db.execute(courses_q)).scalars().all())
+    comparison = []
+    for course in courses:
+        per_course = (
+            select(QuizResult.score)
+            .join(QuizAttempt, QuizAttempt.id == QuizResult.attempt_id)
+            .join(Quiz, Quiz.id == QuizAttempt.quiz_id)
+            .where(Quiz.course_id == course.id, Quiz.school_id == course.school_id)
         )
-        crow = cq.one()
-        class_comparison.append({
-            "cls": c.title[:20],
-            "avg": round(float(crow[0] or 0) * 100, 1),
-            "quizzes": crow[1] or 0,
+        scores_for_course = list((await db.execute(per_course)).scalars().all())
+        comparison.append({
+            "cls": course.title[:20],
+            "avg": round(100 * sum(scores_for_course) / len(scores_for_course), 1) if scores_for_course else 0,
+            "quizzes": len(scores_for_course),
         })
-
     return {
-        "overall_avg": round(overall_avg * 100, 1),
-        "pass_rate": pass_rate,
-        "total_quizzes": total_results,
-        "class_comparison": class_comparison,
+        "overall_avg": round(100 * sum(scores) / len(scores), 1) if scores else 0,
+        "pass_rate": round(100 * sum(v >= 0.6 for v in scores) / len(scores), 1) if scores else 0,
+        "total_quizzes": len(scores),
+        "class_comparison": comparison,
     }
 
 
@@ -309,61 +264,43 @@ async def teacher_weak_topics(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> list[dict]:
-    """Identify topics where students perform worst, based on quiz question tags."""
-    # Get all questions with their results
-    questions_q = await db.execute(
-        select(Question).options(selectinload(Question.quiz)).limit(200)
-    )
-    questions = questions_q.scalars().all()
-
-    # Analyze per-topic performance by checking answers across attempts
-    topic_stats: dict[str, dict] = {}
-    for q in questions:
-        tags = q.topic_tags if q.topic_tags else ["General"]
-        # Get all attempts that answered this question
-        attempts_q = await db.execute(
-            select(QuizAttempt)
-            .where(
-                QuizAttempt.quiz_id == q.quiz_id,
+    schools = await _school_scope(db, user)
+    questions_q = select(Question, Quiz.title).join(Quiz, Question.quiz_id == Quiz.id).limit(200)
+    rows = list((await db.execute(_quiz_filter(questions_q, schools))).all())
+    quiz_ids = {question.quiz_id for question, _ in rows}
+    attempts = []
+    if quiz_ids:
+        attempts = list((await db.execute(
+            select(QuizAttempt).where(
+                QuizAttempt.quiz_id.in_(quiz_ids),
                 QuizAttempt.submitted_at.isnot(None),
             )
-        )
-        attempts = attempts_q.scalars().all()
-
-        for tag in tags:
-            if tag not in topic_stats:
-                topic_stats[tag] = {
-                    "topic": tag,
-                    "correct": 0,
-                    "total": 0,
-                    "students": set(),
-                    "subject": q.quiz.title.split()[0] if q.quiz and q.quiz.title else "General",
-                }
-            for a in attempts:
-                answers = a.answers or {}
-                qid_str = str(q.id)
-                if qid_str in answers:
-                    topic_stats[tag]["total"] += 1
-                    topic_stats[tag]["students"].add(str(a.student_user_id))
-                    if answers[qid_str] == q.correct_index:
-                        topic_stats[tag]["correct"] += 1
-
-    # Convert to response, sorted by worst performance
-    result = []
-    for tag, data in topic_stats.items():
-        if data["total"] == 0:
-            continue
-        avg_score = round(data["correct"] / data["total"] * 100, 1)
-        result.append({
-            "topic": data["topic"],
-            "avgScore": avg_score,
-            "students": len(data["students"]),
-            "trend": -5 if avg_score < 50 else (-2 if avg_score < 65 else 2),
-            "subject": data["subject"],
-        })
-
-    result.sort(key=lambda x: x["avgScore"])
-    return result[:10]
+        )).scalars().all())
+    attempts_by_quiz: dict[UUID, list[QuizAttempt]] = {}
+    for attempt in attempts:
+        attempts_by_quiz.setdefault(attempt.quiz_id, []).append(attempt)
+    topics: dict[str, dict] = {}
+    for question, title in rows:
+        for topic in question.topic_tags or ["General"]:
+            entry = topics.setdefault(topic, {
+                "correct": 0, "total": 0, "students": set(), "subject": title.split()[0] if title else "General"
+            })
+            for attempt in attempts_by_quiz.get(question.quiz_id, []):
+                choice = (attempt.answers or {}).get(str(question.id))
+                if choice is not None:
+                    entry["total"] += 1
+                    entry["correct"] += int(choice == question.correct_index)
+                    entry["students"].add(attempt.student_user_id)
+    return sorted([
+        {
+            "topic": topic,
+            "avgScore": round(100 * value["correct"] / value["total"], 1),
+            "students": len(value["students"]),
+            "trend": 0,  # Trend unavailable until historical topic snapshots exist.
+            "subject": value["subject"],
+        }
+        for topic, value in topics.items() if value["total"]
+    ], key=lambda r: r["avgScore"])[:10]
 
 
 @router.get("/teacher/class-summary")
@@ -371,46 +308,31 @@ async def teacher_class_summary(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> list[dict]:
-    """Summary per course/class for the teacher classes page."""
-    courses_q = await db.execute(
-        select(Course).order_by(Course.created_at.desc()).limit(20)
-    )
-    courses = courses_q.scalars().all()
-
-    result = []
+    schools = await _school_scope(db, user)
+    query = select(Course).order_by(Course.created_at.desc()).limit(20)
+    if schools is not None:
+        query = query.where(Course.school_id.in_(schools))
+    courses = list((await db.execute(query)).scalars().all())
     colors = ["cyan", "emerald", "purple", "amber", "blue"]
-    for idx, c in enumerate(courses):
-        # Student count
-        enroll_q = await db.execute(
-            select(func.count(Enrollment.id)).where(Enrollment.course_id == c.id)
-        )
-        student_count = enroll_q.scalar() or 0
-
-        # Avg score for quizzes in this course
-        avg_q = await db.execute(
-            select(func.avg(QuizResult.score))
-            .join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
-            .join(Quiz, QuizAttempt.quiz_id == Quiz.id)
-            .where(Quiz.course_id == c.id)
-        )
-        avg_score = float(avg_q.scalar() or 0)
-
-        # Quiz count
-        quiz_q = await db.execute(
-            select(func.count(Quiz.id)).where(Quiz.course_id == c.id)
-        )
-        quiz_count = quiz_q.scalar() or 0
-
-        result.append({
-            "id": str(c.id),
-            "name": c.title,
-            "students": student_count,
-            "avgScore": round(avg_score * 100, 1),
-            "courses": quiz_count,
-            "color": colors[idx % len(colors)],
+    output = []
+    for i, course in enumerate(courses):
+        count = (await db.execute(
+            select(func.count(Enrollment.id)).where(Enrollment.course_id == course.id)
+        )).scalar_one()
+        scores = list((await db.execute(
+            select(QuizResult.score).join(QuizAttempt, QuizResult.attempt_id == QuizAttempt.id)
+            .join(Quiz, Quiz.id == QuizAttempt.quiz_id)
+            .where(Quiz.course_id == course.id, Quiz.school_id == course.school_id)
+        )).scalars().all())
+        quizzes = (await db.execute(
+            select(func.count(Quiz.id)).where(Quiz.course_id == course.id, Quiz.school_id == course.school_id)
+        )).scalar_one()
+        output.append({
+            "id": str(course.id), "name": course.title, "students": count,
+            "avgScore": round(100 * sum(scores) / len(scores), 1) if scores else 0,
+            "courses": quizzes, "color": colors[i % len(colors)],
         })
-
-    return result
+    return output
 
 
 @router.get("/teacher/ai-insights")
@@ -418,55 +340,33 @@ async def teacher_ai_insights(
     db: DbSession,
     user: Annotated[User, Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 ) -> dict:
-    """AI-generated insights about classroom performance."""
-    # Aggregate data
-    total_students_q = await db.execute(
-        select(func.count(UserRoleAssignment.id)).where(
-            UserRoleAssignment.role == UserRole.STUDENT
-        )
-    )
-    total_students = total_students_q.scalar() or 0
-
-    avg_q = await db.execute(select(func.avg(QuizResult.score)))
-    avg_score = float(avg_q.scalar() or 0)
-
-    # Students at risk (avg score < 0.5)
-    at_risk_q = await db.execute(
-        select(func.count(func.distinct(QuizAttempt.student_user_id)))
-        .join(QuizResult, QuizResult.attempt_id == QuizAttempt.id)
-        .where(QuizResult.score < 0.5)
-    )
-    at_risk = at_risk_q.scalar() or 0
-
+    schools = await _school_scope(db, user)
+    roster = await _student_roster(db, schools)
+    results = await _school_results(db, schools)
+    scores = [float(r.score) for r in results]
+    at_risk_ids = {r.student_user_id for r in results if r.score < 0.5}
+    average = sum(scores) / len(scores) if scores else 0
     insights = []
-    if avg_score < 0.6:
+    if scores and average < 0.6:
         insights.append({
-            "type": "warning",
-            "title": "Overall Performance Below Target",
-            "description": f"Class average is {round(avg_score * 100, 1)}%, which is below the 60% target. Consider review sessions.",
+            "type": "warning", "title": "Average score below target",
+            "description": f"Average score is {round(100 * average, 1)}%. Consider additional review sessions.",
         })
-    if at_risk > 0:
+    if at_risk_ids:
         insights.append({
-            "type": "alert",
-            "title": f"{at_risk} Students At Risk",
-            "description": f"{at_risk} students have scored below 50% on recent quizzes. Individual attention recommended.",
+            "type": "alert", "title": f"{len(at_risk_ids)} learners need support",
+            "description": "Some students recently scored below 50%; consider individualized support.",
         })
-    insights.append({
-        "type": "info",
-        "title": "AI Recommendation",
-        "description": f"With {total_students} active students, consider creating adaptive quizzes to personalize difficulty levels.",
-    })
-    insights.append({
-        "type": "success",
-        "title": "Engagement Metric",
-        "description": "Quiz completion rates are healthy. Students are actively participating in assessments.",
-    })
-
+    if not scores:
+        insights.append({
+            "type": "info", "title": "No completed assessments",
+            "description": "Create an assessment and invite students to establish a learning baseline.",
+        })
     return {
         "insights": insights,
         "summary": {
-            "total_students": total_students,
-            "avg_performance": round(avg_score * 100, 1),
-            "at_risk_count": at_risk,
+            "total_students": len(roster),
+            "avg_performance": round(100 * average, 1) if scores else 0,
+            "at_risk_count": len(at_risk_ids),
         },
     }

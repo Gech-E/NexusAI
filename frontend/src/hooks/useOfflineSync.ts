@@ -2,61 +2,99 @@
 
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import { apiUrl } from '@/lib/api';
+import { apiPost } from '@/lib/api';
+import { pendingAttempts, deleteAttempt } from '@/lib/offline';
+
+interface SyncRecord {
+  entity_type: string;
+  entity_id: string;
+  operation: 'create' | 'update' | 'upsert';
+  data: Record<string, unknown>;
+}
+
+const QUEUE_KEY = 'nexus-offline-queue';
+
+function readQueue(): SyncRecord[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((record): record is SyncRecord =>
+      record !== null && typeof record === 'object' &&
+      typeof record.entity_type === 'string' &&
+      typeof record.entity_id === 'string' &&
+      ['create', 'update', 'upsert'].includes(record.operation) &&
+      record.data !== null && typeof record.data === 'object' &&
+      !Array.isArray(record.data)
+    );
+  } catch {
+    return [];
+  }
+}
+
+function getDeviceId(): string {
+  const key = 'nexus-device-id';
+  let value = localStorage.getItem(key);
+  if (!value) {
+    value = crypto.randomUUID();
+    localStorage.setItem(key, value);
+  }
+  return value;
+}
 
 export const useOfflineSync = () => {
   const setOfflineStatus = useAppStore((state) => state.setOfflineStatus);
   const accessToken = useAppStore((state) => state.accessToken);
+  const userId = useAppStore((state) => state.user?.id);
 
   useEffect(() => {
-    const handleOnline = async () => {
-      console.log('🌐 System online. Starting sync...');
-      setOfflineStatus(false);
-      
-      // In a real PWA, we would read from IndexedDB (using idb or similar)
-      // and flush the pending request queue.
-      const offlineQueue = JSON.parse(localStorage.getItem('nexus-offline-queue') || '[]');
-      
-      if (offlineQueue.length > 0 && accessToken) {
-        try {
-          const response = await fetch(apiUrl('/api/v1/sync/bulk'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              collection: 'quiz_attempts',
-              data: offlineQueue,
-            }),
-          });
+    let synchronizing = false;
 
-          if (response.ok) {
-            console.log('✅ Sync completed successfully.');
-            localStorage.removeItem('nexus-offline-queue');
-          }
-        } catch (error) {
-          console.error('❌ Sync failed:', error);
+    const flush = async () => {
+      setOfflineStatus(!navigator.onLine);
+      if (!navigator.onLine || !accessToken || !userId || synchronizing) return;
+      synchronizing = true;
+      try {
+        // Snapshot the queue and only remove records that were acknowledged.
+        // Legacy malformed records remain in storage for manual recovery.
+        // Submit only server-issued, user-owned quiz attempts. The server handles retries.
+        const attempts = await pendingAttempts(userId);
+        for (const attempt of attempts) {
+          try {
+            await apiPost(`/api/v1/quizzes/${attempt.quizId}/submit`, { attempt_id: attempt.attemptId, answers: attempt.answers });
+            await deleteAttempt(userId, attempt.quizId);
+          } catch (error) { console.warn('Quiz sync pending:', error); }
         }
+        const records = readQueue();
+        if (!records.length) return;
+        const batch = records.slice(0, 100);
+        const response = await apiPost<{ status: string; errors: unknown[] }>(
+          '/api/v1/sync/bulk',
+          { device_id: getDeviceId(), records: batch }
+        );
+        if (response.status === 'success' && response.errors.length === 0) {
+          const current = readQueue();
+          const batchJson = batch.map((r) => JSON.stringify(r));
+          const remaining = [...current];
+          for (const item of batchJson) {
+            const index = remaining.findIndex((r) => JSON.stringify(r) === item);
+            if (index !== -1) remaining.splice(index, 1);
+          }
+          localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
+        }
+      } catch (error) {
+        console.error('Offline sync will retry when connectivity returns:', error);
+      } finally {
+        synchronizing = false;
       }
     };
 
-    const handleOffline = () => {
-      console.log('📡 System offline. Switching to local storage.');
-      setOfflineStatus(true);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Initial check
-    if (!navigator.onLine) {
-      setOfflineStatus(true);
-    }
-
+    const onOffline = () => setOfflineStatus(true);
+    window.addEventListener('online', flush);
+    window.addEventListener('offline', onOffline);
+    void flush();
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', flush);
+      window.removeEventListener('offline', onOffline);
     };
-  }, [setOfflineStatus, accessToken]);
+  }, [setOfflineStatus, accessToken, userId]);
 };

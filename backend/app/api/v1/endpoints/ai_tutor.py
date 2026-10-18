@@ -1,7 +1,11 @@
 """AI Tutor API — RAG-powered conversational tutoring with Gemini."""
 
 from uuid import UUID
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from app.infrastructure.models.ai_data import AIConversation
+from app.infrastructure.models.user import UserRole
+from app.deps import require_roles
 from pydantic import BaseModel, Field
 
 from app.deps import CurrentUser, DbSession
@@ -29,6 +33,14 @@ class QuizGenRequest(BaseModel):
 @router.post("/tutor/query")
 async def tutor_query(payload: TutorQuery, db: DbSession, user: CurrentUser) -> dict:
     """Send a question to the AI Tutor and receive an intelligent RAG-powered response."""
+    if payload.conversation_id:
+        try:
+            cid = UUID(payload.conversation_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid conversation ID") from None
+        owner = (await db.execute(select(AIConversation.user_id).where(AIConversation.id == cid))).scalar_one_or_none()
+        if owner != user.id:
+            raise HTTPException(status_code=404, detail="Conversation not found")
     service = AITutorService(db=db)
     response = await service.get_tutor_response(
         payload.query,
@@ -99,14 +111,14 @@ async def quiz_me(payload: QuizGenRequest, db: DbSession, user: CurrentUser) -> 
     return {"topic": payload.topic, "difficulty": payload.difficulty, "questions": questions}
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(require_roles(UserRole.ADMIN))])
 async def ai_stats(db: DbSession, user: CurrentUser) -> dict:
     """Get live AI system usage statistics (admin)."""
     service = AIAnalyticsService(db)
     return await service.get_ai_system_stats()
 
 
-@router.get("/teacher/narrative")
+@router.get("/teacher/narrative", dependencies=[Depends(require_roles(UserRole.ADMIN))])
 async def teacher_narrative(db: DbSession, user: CurrentUser) -> dict:
     """Generate AI-powered narrative analytics for teachers."""
     service = AIAnalyticsService(db)

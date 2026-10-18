@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { BookOpen, BrainCircuit, Play, ChevronLeft, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, apiGet } from '@/lib/api';
+import { saveLesson, getLesson, CachedLesson } from '@/lib/offline';
 
 interface CourseDetail {
   id: string;
@@ -20,6 +21,8 @@ export default function CourseDetailPage() {
   const router = useRouter();
   const courseId = params.id as string;
   const accessToken = useAppStore(state => state.accessToken);
+  const userId = useAppStore(state => state.user?.id);
+  const [downloadStatus, setDownloadStatus] = useState('');
   
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [progress, setProgress] = useState<number>(0);
@@ -28,6 +31,12 @@ export default function CourseDetailPage() {
   useEffect(() => {
     const fetchCourseData = async () => {
       if (!accessToken || !courseId) return;
+      if (!navigator.onLine && userId) {
+        const local = await getLesson(userId, courseId);
+        if (local) setCourse({ ...local, quiz_count: 0 });
+        setLoading(false);
+        return;
+      }
       try {
         const [courseRes, enrolledRes] = await Promise.all([
           fetch(apiUrl(`/api/v1/courses/${courseId}`), { headers: { 'Authorization': `Bearer ${accessToken}` } }),
@@ -54,7 +63,7 @@ export default function CourseDetailPage() {
     };
     
     fetchCourseData();
-  }, [accessToken, courseId]);
+  }, [accessToken, courseId, userId]);
 
   if (loading) {
     return (
@@ -115,6 +124,11 @@ export default function CourseDetailPage() {
           </div>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5" aria-label="Offline course download">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-white">Read this course offline</h2><p className="mt-1 text-sm text-slate-400">Save the course description and syllabus on this device. Videos and AI tutoring require a connection.</p></div><button type="button" onClick={async () => {if (!userId) return;try {const pack=await apiGet<Omit<CachedLesson,'downloadedAt'>>(`/api/v1/courses/${courseId}/offline-pack`);await saveLesson(userId,courseId,{...pack,downloadedAt:Date.now()});setDownloadStatus('Saved to this device');}catch {setDownloadStatus('Could not save. Connect to the internet and retry.');}}} className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950">Save for offline use</button></div>
+        {downloadStatus && <p role="status" className="mt-3 text-sm text-cyan-200">{downloadStatus}</p>}
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
         {/* Actions */}

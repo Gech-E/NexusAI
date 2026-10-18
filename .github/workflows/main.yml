@@ -14,7 +14,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.12'
     - name: Install dependencies
       run: |
         cd backend
@@ -23,7 +23,8 @@ jobs:
     - name: Run linting
       run: |
         cd backend
-        # Add linting commands like flake8 or black check here
+        python -m compileall -q app
+        python -m pytest -q tests
 
   frontend-test:
     runs-on: ubuntu-latest
@@ -32,13 +33,17 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.19.0'
+        node-version: '22'
         check-latest: true
     - name: Install dependencies
       run: |
         cd frontend
-        rm -rf node_modules package-lock.json
-        npm install
+        npm ci
+    - name: Run typecheck and lint
+      run: |
+        cd frontend
+        npm run typecheck
+        npm run lint
     - name: Run build
       run: |
         cd frontend

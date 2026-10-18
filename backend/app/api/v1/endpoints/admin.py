@@ -1,6 +1,10 @@
 """Admin-only endpoints for platform management."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
+from datetime import datetime, timedelta, timezone
+from jose import jwt
+from pydantic import EmailStr
+from app.core.config import settings
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -170,6 +174,20 @@ async def update_user_role(user_id: UUID, payload: RoleUpdate, db: DbSession) ->
     if existing_q.scalar_one_or_none():
         return {"id": str(user_id), "role": payload.role, "status": "already_assigned"}
 
+    if new_role == UserRole.TEACHER:
+        student_profile = (await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == user_id)
+        )).scalar_one_or_none()
+        teacher_profile = (await db.execute(
+            select(TeacherProfile).where(TeacherProfile.user_id == user_id)
+        )).scalar_one_or_none()
+        if not teacher_profile:
+            if not student_profile:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Assign this user to a school before granting teacher access",
+                )
+            db.add(TeacherProfile(user_id=user_id, school_id=student_profile.school_id, metadata_={}))
     db.add(UserRoleAssignment(user_id=user_id, role=new_role))
     await db.commit()
     return {"id": str(user_id), "role": payload.role, "status": "assigned"}
@@ -347,3 +365,30 @@ async def system_health(db: DbSession) -> dict:
         ],
         "overall": "healthy" if db_healthy else "degraded",
     }
+
+
+class StudentInviteRequest(BaseModel):
+    email: EmailStr
+    school_id: UUID
+
+
+@router.post("/invitations", dependencies=[Depends(require_roles(UserRole.ADMIN))])
+async def create_student_invitation(payload: StudentInviteRequest, db: DbSession) -> dict:
+    """Issue a short-lived, email-bound student invite from a platform admin."""
+    school = await db.get(School, payload.school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    existing = (await db.execute(select(User.id).where(User.email == str(payload.email).lower()))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    expires = datetime.now(timezone.utc) + timedelta(days=7)
+    invitation = jwt.encode({
+        "type": "school_invitation",
+        "sub": str(payload.school_id),
+        "email": str(payload.email).lower(),
+        "school_slug": school.slug,
+        "role": "student",
+        "jti": str(uuid4()),
+        "exp": int(expires.timestamp()),
+    }, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return {"invite_token": invitation, "school_slug": school.slug, "expires_at": expires.isoformat()}

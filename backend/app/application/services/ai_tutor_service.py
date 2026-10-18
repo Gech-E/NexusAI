@@ -521,7 +521,8 @@ class AITutorService:
             if conversation_id:
                 msgs_q = await self.db.execute(
                     select(AIMessage.role, AIMessage.content)
-                    .where(AIMessage.conversation_id == conversation_id)
+                    .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+                    .where(AIMessage.conversation_id == conversation_id, AIConversation.user_id == user_id)
                     .order_by(AIMessage.created_at.desc())
                     .limit(limit)
                 )
@@ -577,6 +578,12 @@ class AITutorService:
                     await self.db.flush()
 
                 conversation_id = conv.id
+
+            owner = (await self.db.execute(
+                select(AIConversation.user_id).where(AIConversation.id == conversation_id)
+            )).scalar_one_or_none()
+            if owner != user_id:
+                return None
 
             msg = AIMessage(
                 conversation_id=conversation_id,

@@ -6,9 +6,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.deps import CurrentUser, DbSession, require_roles
+from app.core.permissions import require_school, is_platform_admin, user_school_ids
 from app.infrastructure.models.assessment import Question, Quiz
+from app.infrastructure.models.academic import Course
 from app.infrastructure.models.institution import School
 from app.infrastructure.models.user import UserRole
+
+
+def can_manage_quiz(quiz: Quiz, user) -> bool:
+    """Only the creating teacher or a platform admin may manage an assessment."""
+    roles = {assignment.role for assignment in user.roles}
+    return UserRole.ADMIN in roles or (UserRole.TEACHER in roles and quiz.created_by_user_id == user.id)
+
+
+def assert_can_manage_quiz(quiz: Quiz, user) -> None:
+    if not can_manage_quiz(quiz, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage this quiz")
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
@@ -39,23 +52,25 @@ class QuizRead(BaseModel):
 
 @router.get("", response_model=list[QuizRead])
 async def list_quizzes(db: DbSession, user: CurrentUser) -> list[Quiz]:
-    await db.execute(select(1))  # touch session
-    result = await db.execute(select(Quiz).order_by(Quiz.created_at.desc()).limit(50))
+    schools = await user_school_ids(db, user)
+    query = select(Quiz)
+    if not is_platform_admin(user):
+        query = query.where(Quiz.school_id.in_(schools))
+    result = await db.execute(query.order_by(Quiz.created_at.desc()).limit(50))
     return list(result.scalars().all())
 
 
 @router.post("", response_model=QuizRead, dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))])
 async def create_quiz(payload: QuizCreate, db: DbSession, user: CurrentUser) -> Quiz:
-    # Ensure school exists to prevent IntegrityError in demo environment
+    await require_school(db, user, payload.school_id)
     school_res = await db.execute(select(School).where(School.id == payload.school_id))
     if not school_res.scalar_one_or_none():
-        demo_school = School(
-            id=payload.school_id,
-            name="Default Demo School",
-            slug="default-demo-school",
-        )
-        db.add(demo_school)
-        await db.flush()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="School not found")
+
+    if payload.course_id:
+        course = await db.get(Course, payload.course_id)
+        if not course or course.school_id != payload.school_id:
+            raise HTTPException(status_code=422, detail="Course must belong to the selected school")
 
     quiz = Quiz(
         school_id=payload.school_id,
@@ -117,6 +132,7 @@ class QuizStartResponse(BaseModel):
 
 
 class AnswerSubmission(BaseModel):
+    attempt_id: UUID | None = None
     answers: dict[str, int]  # Maps question_id -> selected_choice_index
 
 
@@ -151,6 +167,8 @@ async def start_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     quiz = result.scalar_one_or_none()
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    await require_school(db, user, quiz.school_id)
 
     # Reuse an existing unsubmitted attempt if one exists (prevents duplicates from race conditions)
     existing_q = await db.execute(
@@ -202,30 +220,55 @@ async def submit_quiz(
     quiz_id: UUID, payload: AnswerSubmission, db: DbSession, user: CurrentUser
 ) -> dict:
     """Submit quiz answers, score them, and return feedback."""
-    # Find the latest un-submitted attempt
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+    await require_school(db, user, quiz.school_id)
+
+    # The client supplies the exact started attempt to safely retry after reconnect.
+    if payload.attempt_id is None:
+        raise HTTPException(status_code=422, detail="attempt_id is required")
     attempt_q = await db.execute(
         select(QuizAttempt)
         .where(
+            QuizAttempt.id == payload.attempt_id,
             QuizAttempt.quiz_id == quiz_id,
             QuizAttempt.student_user_id == user.id,
-            QuizAttempt.submitted_at.is_(None),
         )
-        .order_by(QuizAttempt.created_at.desc())
-        .limit(1)
+        .with_for_update()
     )
-    attempt = attempt_q.scalars().first()
+    attempt = attempt_q.scalar_one_or_none()
     if not attempt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No active attempt found. Start the quiz first.",
         )
 
+    if attempt.submitted_at is not None:
+        if attempt.answers != payload.answers:
+            raise HTTPException(status_code=409, detail="Attempt already submitted with different answers")
+        # A repeated delivery is acknowledged without creating a second result.
+        saved = (await db.execute(select(QuizResult).where(QuizResult.attempt_id == attempt.id))).scalar_one_or_none()
+        if saved:
+            questions = list((await db.execute(select(Question).where(Question.quiz_id == quiz_id))).scalars().all())
+            count = sum(payload.answers.get(str(q.id), -1) == q.correct_index for q in questions)
+            return {"score": saved.score, "correct_count": count, "total_questions": len(questions),
+                    "percentage": round(saved.score * 100, 1), "feedback": [
+                        {"question_id": str(q.id), "prompt": q.prompt,
+                         "selected_index": payload.answers.get(str(q.id), -1), "correct_index": q.correct_index,
+                         "is_correct": payload.answers.get(str(q.id), -1) == q.correct_index, "choices": q.choices}
+                        for q in questions]}
+        raise HTTPException(status_code=409, detail="Submitted attempt result unavailable")
+
     # Load questions
     questions_q = await db.execute(
         select(Question).where(Question.quiz_id == quiz_id)
     )
     questions = questions_q.scalars().all()
-    question_map = {str(q.id): q for q in questions}
+    valid_ids = {str(q.id) for q in questions}
+    if set(payload.answers) - valid_ids or any(not (0 <= choice < len(q.choices)) for q in questions
+                                                     for choice in [payload.answers.get(str(q.id), -1)] if choice != -1):
+        raise HTTPException(status_code=422, detail="Invalid answer choices")
 
     # Score
     correct_count = 0
@@ -336,6 +379,8 @@ async def get_quiz_detail(quiz_id: UUID, db: DbSession, user: CurrentUser) -> di
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
 
+    assert_can_manage_quiz(quiz, user)
+
     # Count attempts
     attempt_count_q = await db.execute(
         select(func.count(QuizAttempt.id)).where(QuizAttempt.quiz_id == quiz_id)
@@ -380,11 +425,12 @@ async def get_quiz_detail(quiz_id: UUID, db: DbSession, user: CurrentUser) -> di
     "/{quiz_id}",
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
-async def delete_quiz(quiz_id: UUID, db: DbSession) -> dict:
+async def delete_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     """Delete a quiz and all its questions/attempts (cascade)."""
     quiz = await db.get(Quiz, quiz_id)
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+    assert_can_manage_quiz(quiz, user)
     await db.delete(quiz)
     await db.commit()
     return {"status": "deleted", "quiz_id": str(quiz_id)}
@@ -394,12 +440,14 @@ async def delete_quiz(quiz_id: UUID, db: DbSession) -> dict:
     "/{quiz_id}/results",
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
-async def quiz_results(quiz_id: UUID, db: DbSession) -> dict:
+async def quiz_results(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     """Get all student results for a specific quiz (teacher view)."""
     # Verify quiz exists
     quiz = await db.get(Quiz, quiz_id)
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    assert_can_manage_quiz(quiz, user)
 
     # Get all submitted attempts with results
     from app.infrastructure.models.user import User as UserModel

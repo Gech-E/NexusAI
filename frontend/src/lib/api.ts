@@ -5,10 +5,12 @@
  * - Provides typed fetch helpers
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Same-origin by default: never expose an internal Docker hostname to browsers.
+import { useAppStore } from '@/store/useAppStore';
 
-let isRefreshing = false;
-let refreshQueue: Array<() => void> = [];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
+let refreshPromise: Promise<boolean> | null = null;
 
 function getAuthHeaders(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -47,6 +49,8 @@ async function refreshAccessToken(): Promise<boolean> {
       parsed.state.refreshToken = data.refresh_token;
     }
     localStorage.setItem('nexus-auth-storage', JSON.stringify(parsed));
+    const state = useAppStore.getState();
+    if (state.user) state.setAuth(state.user, data.access_token, data.refresh_token || refreshToken);
     return true;
   } catch {
     return false;
@@ -54,38 +58,14 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 async function handleUnauthorized(): Promise<boolean> {
-  if (isRefreshing) {
-    return new Promise<boolean>((resolve) => {
-      refreshQueue.push(() => resolve(true));
-    });
+  // Exactly one rotation attempt per browser tab, including failed attempts.
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
   }
-
-  isRefreshing = true;
-  const success = await refreshAccessToken();
-  isRefreshing = false;
-
-  if (success) {
-    refreshQueue.forEach((cb) => cb());
-    refreshQueue = [];
-    return true;
-  }
-
-  // Refresh failed — clear auth and redirect to login
-  refreshQueue = [];
-  try {
-    const raw = localStorage.getItem('nexus-auth-storage');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      parsed.state.user = null;
-      parsed.state.accessToken = null;
-      parsed.state.refreshToken = null;
-      localStorage.setItem('nexus-auth-storage', JSON.stringify(parsed));
-    }
-  } catch { /* ignore */ }
-
-  if (typeof window !== 'undefined') {
-    window.location.href = '/login';
-  }
+  const success = await refreshPromise;
+  if (success) return true;
+  useAppStore.getState().logout();
+  if (typeof window !== 'undefined') window.location.href = '/login';
   return false;
 }
 

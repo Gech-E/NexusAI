@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Clock, Loader2, CheckCircle2, XCircle, Trophy, ArrowLeft, Send } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { apiUrl } from '@/lib/api';
+import { saveQuiz, getQuiz, queueAttempt } from '@/lib/offline';
 
 interface QuestionItem {
   id: string;
@@ -47,6 +48,7 @@ export default function QuizTakingPage() {
   const router = useRouter();
   const quizId = params.id as string;
   const accessToken = useAppStore(state => state.accessToken);
+  const userId = useAppStore(state => state.user?.id);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [quizData, setQuizData] = useState<QuizData | null>(null);
@@ -59,7 +61,13 @@ export default function QuizTakingPage() {
   // Start quiz
   useEffect(() => {
     const startQuiz = async () => {
-      if (!accessToken || !quizId) return;
+      if (!accessToken || !quizId || !userId) return;
+      if (!navigator.onLine) {
+        const stored = await getQuiz(userId, quizId);
+        if (stored) { setQuizData(stored); setPhase('quiz'); return; }
+        setError('This quiz was not saved for offline use. Connect to the internet to start it.');
+        return;
+      }
       try {
         const res = await fetch(apiUrl(`/api/v1/quizzes/${quizId}/start`), {
           method: 'POST',
@@ -68,6 +76,7 @@ export default function QuizTakingPage() {
         if (res.ok) {
           const data = await res.json();
           setQuizData(data);
+          await saveQuiz(userId, quizId, data);
           setPhase('quiz');
         } else {
           const err = await res.json();
@@ -78,7 +87,7 @@ export default function QuizTakingPage() {
       }
     };
     startQuiz();
-  }, [accessToken, quizId]);
+  }, [accessToken, quizId, userId]);
 
   // Timer
   useEffect(() => {
@@ -98,13 +107,18 @@ export default function QuizTakingPage() {
   };
 
   const handleSubmit = async () => {
-    if (!accessToken || !quizData) return;
+    if (!accessToken || !quizData || !userId) return;
     setPhase('submitting');
+    if (!navigator.onLine) {
+      await queueAttempt(userId, quizId, { quizId, attemptId: quizData.attempt_id, answers, queuedAt: Date.now() });
+      setError('Your answers are saved on this device. They will be submitted when you reconnect.');
+      return;
+    }
     try {
       const res = await fetch(apiUrl(`/api/v1/quizzes/${quizId}/submit`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ attempt_id: quizData.attempt_id, answers }),
       });
       if (res.ok) {
         setResult(await res.json());
@@ -114,7 +128,8 @@ export default function QuizTakingPage() {
         setPhase('quiz');
       }
     } catch {
-      setError('Failed to connect to server');
+      await queueAttempt(userId, quizId, { quizId, attemptId: quizData.attempt_id, answers, queuedAt: Date.now() });
+      setError('Your answers were saved locally. Reconnect to submit and receive a score.');
       setPhase('quiz');
     }
   };

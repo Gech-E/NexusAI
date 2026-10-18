@@ -1,54 +1,83 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import json
-import logging
-import asyncio
-from typing import Dict
+"""Authenticated, origin-restricted exam notification channel.
+
+The CV inference pipeline is not wired in here. Do not fabricate proctoring
+incidents or silently accept unverified student video streams.
+"""
+from collections import defaultdict
+from uuid import UUID
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.core.security import decode_token_safe
+from app.infrastructure.database import AsyncSessionLocal
+from app.infrastructure.models.user import User, UserRole
 
 router = APIRouter(prefix="/ws", tags=["websockets"])
 
-# In-memory connection manager for teachers
+
 class ConnectionManager:
-    def __init__(self):
-        # Maps teacher_id to their WebSocket connection
-        self.active_connections: Dict[str, WebSocket] = {}
+    def __init__(self) -> None:
+        self.active_connections: dict[str, set[WebSocket]] = defaultdict(set)
 
-    async def connect(self, websocket: WebSocket, teacher_id: str):
+    async def connect(self, websocket: WebSocket, teacher_id: str) -> None:
         await websocket.accept()
-        self.active_connections[teacher_id] = websocket
-        logging.info(f"Teacher {teacher_id} connected to CV alerts.")
+        self.active_connections[teacher_id].add(websocket)
 
-    def disconnect(self, teacher_id: str):
-        if teacher_id in self.active_connections:
-            del self.active_connections[teacher_id]
-            logging.info(f"Teacher {teacher_id} disconnected.")
+    def disconnect(self, websocket: WebSocket, teacher_id: str) -> None:
+        self.active_connections[teacher_id].discard(websocket)
+        if not self.active_connections[teacher_id]:
+            self.active_connections.pop(teacher_id, None)
 
-    async def send_personal_message(self, message: str, teacher_id: str):
-        if teacher_id in self.active_connections:
-            await self.active_connections[teacher_id].send_text(message)
+    async def send_personal_message(self, message: str, teacher_id: str) -> None:
+        for websocket in tuple(self.active_connections.get(teacher_id, ())):
+            try:
+                await websocket.send_text(message)
+            except (RuntimeError, WebSocketDisconnect):
+                self.disconnect(websocket, teacher_id)
+
 
 manager = ConnectionManager()
 
+
 @router.websocket("/cv-alerts/{teacher_id}")
-async def cv_alerts_endpoint(websocket: WebSocket, teacher_id: str):
+async def cv_alerts_endpoint(websocket: WebSocket, teacher_id: str) -> None:
+    origin = websocket.headers.get("origin")
+    if origin not in settings.cors_origins:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # Browser WebSocket cannot send Authorization headers; a short-lived
+    # access token is sent using Sec-WebSocket-Protocol instead of a URL.
+    protocols = websocket.scope.get("subprotocols") or []
+    token = next((p.removeprefix("nexus.jwt.") for p in protocols if p.startswith("nexus.jwt.")), None)
+    payload = decode_token_safe(token) if token else None
+    try:
+        subject = UUID(str(payload.get("sub"))) if payload and payload.get("type") == "access" else None
+        requested = UUID(teacher_id)
+    except (ValueError, TypeError, AttributeError):
+        subject = None
+        requested = None
+    if not subject or subject != requested:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).options(selectinload(User.roles)).where(User.id == subject, User.is_active.is_(True)))
+        user = result.scalar_one_or_none()
+        roles = {r.role for r in user.roles} if user else set()
+        if not roles.intersection({UserRole.ADMIN, UserRole.TEACHER}):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
     await manager.connect(websocket, teacher_id)
     try:
         while True:
-            # Keep connection alive, wait for incoming messages (if any)
-            data = await websocket.receive_text()
-            
-            # This is where we would normally receive a stream of images from the student,
-            # pass them to the C++ OpenCV CVMonitor engine via nexus_ai_bindings,
-            # and if an alert triggers, broadcast it back to the teacher.
-            
-            # For demonstration, we just echo back a dummy alert if the teacher pings us
-            if data == "ping":
-                alert = {
-                    "student_id": "std_123",
-                    "alert_type": "looking_away",
-                    "confidence": 0.89,
-                    "timestamp_ms": 1715690000000
-                }
-                await manager.send_personal_message(json.dumps(alert), teacher_id)
-
+            message = await websocket.receive_text()
+            if message == "ping":
+                await websocket.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
-        manager.disconnect(teacher_id)
+        pass
+    finally:
+        manager.disconnect(websocket, teacher_id)
