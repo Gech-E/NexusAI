@@ -10,7 +10,7 @@ from app.main import app
 from app.deps import get_db
 from app.core.security import create_access_token
 from app.infrastructure.models.base import Base
-import app.infrastructure.models  # noqa: F401
+import app.infrastructure.models as _models  # noqa: F401
 from app.infrastructure.models.academic import Course
 from app.infrastructure.models.assessment import Quiz, Question
 from app.infrastructure.models.institution import School
