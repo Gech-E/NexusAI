@@ -15,7 +15,6 @@ export default function RegisterPage() {
     lastName: '',
     email: '',
     password: '',
-    role: 'student',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -33,7 +32,6 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: `${formData.firstName} ${formData.lastName}`,
-        role: formData.role,
         school_slug: 'demo-school'
       };
 
@@ -140,18 +138,7 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div>
-              <label htmlFor="reg-role" className="block text-sm font-medium text-slate-300 mb-2">Role</label>
-              <select
-                id="reg-role"
-                value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none"
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-              </select>
-            </div>
+            <p className="text-sm text-slate-400">New accounts start as students. Teachers can request access from their school administrator.</p>
 
             <div>
               <label htmlFor="reg-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
