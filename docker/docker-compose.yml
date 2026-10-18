@@ -9,8 +9,8 @@ services:
       POSTGRES_USER: nexus_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: nexus_learnai
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     restart: unless-stopped
@@ -23,8 +23,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: nexus_redis
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -54,12 +54,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      APP_ENV: development
-      CORS_ORIGINS: http://localhost:3000,http://localhost
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY required}
+      DEBUG: 'false'
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to your HTTPS domain}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
@@ -92,9 +94,9 @@ services:
       dockerfile: Dockerfile
     container_name: nexus_frontend
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
-    ports:
-      - "3000:3000"
+      NEXT_PUBLIC_API_URL: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to your HTTPS domain}
+    expose:
+      - "3000"
     depends_on:
       - backend
     restart: unless-stopped
@@ -117,8 +119,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: nexus_prometheus
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -128,8 +130,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: nexus_grafana
-    ports:
-      - "3001:3000"
+    expose:
+      - "3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
     volumes:
