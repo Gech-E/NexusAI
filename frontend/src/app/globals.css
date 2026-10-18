@@ -68,3 +68,11 @@
     transform: translateX(100%);
   }
 }
+
+/* Accessible interaction and reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+button:not(:disabled), a { touch-action: manipulation; }
+input, textarea, select { accent-color: #22d3ee; }
+::selection { background-color: rgba(34, 211, 238, 0.25); }
