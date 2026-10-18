@@ -126,6 +126,7 @@ class QuizStartResponse(BaseModel):
 
 
 class AnswerSubmission(BaseModel):
+    attempt_id: UUID | None = None
     answers: dict[str, int]  # Maps question_id -> selected_choice_index
 
 
@@ -218,30 +219,50 @@ async def submit_quiz(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
     await require_school(db, user, quiz.school_id)
 
-    # Find the latest un-submitted attempt
+    # The client supplies the exact started attempt to safely retry after reconnect.
+    if payload.attempt_id is None:
+        raise HTTPException(status_code=422, detail="attempt_id is required")
     attempt_q = await db.execute(
         select(QuizAttempt)
         .where(
+            QuizAttempt.id == payload.attempt_id,
             QuizAttempt.quiz_id == quiz_id,
             QuizAttempt.student_user_id == user.id,
-            QuizAttempt.submitted_at.is_(None),
         )
-        .order_by(QuizAttempt.created_at.desc())
-        .limit(1)
+        .with_for_update()
     )
-    attempt = attempt_q.scalars().first()
+    attempt = attempt_q.scalar_one_or_none()
     if not attempt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No active attempt found. Start the quiz first.",
         )
 
+    if attempt.submitted_at is not None:
+        if attempt.answers != payload.answers:
+            raise HTTPException(status_code=409, detail="Attempt already submitted with different answers")
+        # A repeated delivery is acknowledged without creating a second result.
+        saved = (await db.execute(select(QuizResult).where(QuizResult.attempt_id == attempt.id))).scalar_one_or_none()
+        if saved:
+            questions = list((await db.execute(select(Question).where(Question.quiz_id == quiz_id))).scalars().all())
+            count = sum(payload.answers.get(str(q.id), -1) == q.correct_index for q in questions)
+            return {"score": saved.score, "correct_count": count, "total_questions": len(questions),
+                    "percentage": round(saved.score * 100, 1), "feedback": [
+                        {"question_id": str(q.id), "prompt": q.prompt,
+                         "selected_index": payload.answers.get(str(q.id), -1), "correct_index": q.correct_index,
+                         "is_correct": payload.answers.get(str(q.id), -1) == q.correct_index, "choices": q.choices}
+                        for q in questions]}
+        raise HTTPException(status_code=409, detail="Submitted attempt result unavailable")
+
     # Load questions
     questions_q = await db.execute(
         select(Question).where(Question.quiz_id == quiz_id)
     )
     questions = questions_q.scalars().all()
-    question_map = {str(q.id): q for q in questions}
+    valid_ids = {str(q.id) for q in questions}
+    if set(payload.answers) - valid_ids or any(not (0 <= choice < len(q.choices)) for q in questions
+                                                     for choice in [payload.answers.get(str(q.id), -1)] if choice != -1):
+        raise HTTPException(status_code=422, detail="Invalid answer choices")
 
     # Score
     correct_count = 0
