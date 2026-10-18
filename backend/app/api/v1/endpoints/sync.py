@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
@@ -15,15 +15,15 @@ router = APIRouter()
 
 
 class SyncRecord(BaseModel):
-    entity_type: str  # e.g. "quiz_attempt", "study_session"
-    entity_id: str
-    operation: str = Field(default="upsert")  # "create", "update", "upsert"
+    entity_type: str = Field(min_length=1, max_length=64)
+    entity_id: str = Field(min_length=1, max_length=64)
+    operation: str = Field(default="upsert", pattern="^(create|update|upsert)$")  # "create", "update", "upsert"
     data: dict[str, Any] = Field(default_factory=dict)
 
 
 class SyncPayload(BaseModel):
     device_id: str = Field(min_length=1, max_length=128)
-    records: list[SyncRecord] = Field(default_factory=list)
+    records: list[SyncRecord] = Field(default_factory=list, max_length=100)
 
 
 @router.post("/bulk", status_code=status.HTTP_201_CREATED)
@@ -38,6 +38,7 @@ async def bulk_sync(
     """
     synced = 0
     errors = []
+    seen_in_batch: set[tuple[str, str, str, str]] = set()
 
     for record in payload.records:
         try:
@@ -46,12 +47,19 @@ async def bulk_sync(
                 json.dumps(record.data, sort_keys=True, default=str).encode()
             ).hexdigest()
 
-            # Check for duplicate (same device, entity, and hash)
+            key = (record.entity_type, record.entity_id, record.operation, payload_hash)
+            if key in seen_in_batch:
+                continue
+            seen_in_batch.add(key)
+
+            # Check for duplicate (same user, device, entity, operation and hash)
             existing_q = await db.execute(
                 select(OfflineSyncLog).where(
+                    OfflineSyncLog.user_id == user.id,
                     OfflineSyncLog.device_id == payload.device_id,
                     OfflineSyncLog.entity_type == record.entity_type,
                     OfflineSyncLog.entity_id == record.entity_id,
+                    OfflineSyncLog.operation == record.operation,
                     OfflineSyncLog.payload_hash == payload_hash,
                 ).limit(1)
             )
@@ -94,7 +102,7 @@ async def bulk_sync(
 async def sync_status(
     db: DbSession,
     user: CurrentUser,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=100),
 ) -> dict:
     """Returns sync history for the authenticated user."""
     # Get recent sync logs
