@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.deps import CurrentUser, DbSession, require_roles
+from app.core.permissions import require_school, is_platform_admin, user_school_ids
 from app.infrastructure.models.assessment import Question, Quiz
 from app.infrastructure.models.institution import School
 from app.infrastructure.models.user import UserRole
@@ -50,13 +51,17 @@ class QuizRead(BaseModel):
 
 @router.get("", response_model=list[QuizRead])
 async def list_quizzes(db: DbSession, user: CurrentUser) -> list[Quiz]:
-    await db.execute(select(1))  # touch session
-    result = await db.execute(select(Quiz).order_by(Quiz.created_at.desc()).limit(50))
+    schools = await user_school_ids(db, user)
+    query = select(Quiz)
+    if not is_platform_admin(user):
+        query = query.where(Quiz.school_id.in_(schools))
+    result = await db.execute(query.order_by(Quiz.created_at.desc()).limit(50))
     return list(result.scalars().all())
 
 
 @router.post("", response_model=QuizRead, dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))])
 async def create_quiz(payload: QuizCreate, db: DbSession, user: CurrentUser) -> Quiz:
+    await require_school(db, user, payload.school_id)
     school_res = await db.execute(select(School).where(School.id == payload.school_id))
     if not school_res.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="School not found")
@@ -156,6 +161,8 @@ async def start_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
 
+    await require_school(db, user, quiz.school_id)
+
     # Reuse an existing unsubmitted attempt if one exists (prevents duplicates from race conditions)
     existing_q = await db.execute(
         select(QuizAttempt)
@@ -206,6 +213,11 @@ async def submit_quiz(
     quiz_id: UUID, payload: AnswerSubmission, db: DbSession, user: CurrentUser
 ) -> dict:
     """Submit quiz answers, score them, and return feedback."""
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+    await require_school(db, user, quiz.school_id)
+
     # Find the latest un-submitted attempt
     attempt_q = await db.execute(
         select(QuizAttempt)
