@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Plus, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, apiGet } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 interface QuestionForm {
@@ -18,6 +18,15 @@ interface QuestionForm {
 export default function CreateExam() {
   const accessToken = useAppStore(state => state.accessToken);
   const router = useRouter();
+  const [schools, setSchools] = useState<{id: string; name: string}[]>([]);
+  const [schoolId, setSchoolId] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  useEffect(() => {
+    if (!accessToken) return;
+    apiGet<{id: string; name: string}[]>('/api/v1/users/me/schools')
+      .then(data => { setSchools(data); setSchoolId(previous => previous || data[0]?.id || ''); })
+      .catch(() => setSubmitError('Unable to load your schools. Contact your administrator.'));
+  }, [accessToken]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [questions, setQuestions] = useState<QuestionForm[]>([
@@ -47,12 +56,13 @@ export default function CreateExam() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accessToken) return;
+    if (!accessToken || !schoolId) { setSubmitError('Select a school before creating an exam.'); return; }
+    setSubmitError('');
     setLoading(true);
     try {
       const payload = {
         title, description,
-        school_id: '00000000-0000-0000-0000-000000000001',
+        school_id: schoolId,
         questions: questions.map(q => ({ ...q, topic_tags: q.topic_tags.length ? q.topic_tags : [title.toLowerCase()] }))
       };
       const res = await fetch(apiUrl('/api/v1/quizzes'), {
@@ -60,19 +70,25 @@ export default function CreateExam() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Unable to create exam');
+      }
       if (res.ok) {
         setSuccess(true);
         setTimeout(() => router.push('/dashboard/teacher/exams'), 1500);
       }
     } catch (err) {
-      console.error(err);
+      setSubmitError(err instanceof Error ? err.message : 'Unable to create exam');
     } finally {
       setLoading(false);
     }
   };
 
   if (success) {
-    return (
+    const schoolChooser = schools.length ? schools : [];
+
+  return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-400" />
@@ -91,6 +107,8 @@ export default function CreateExam() {
       </motion.div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2 mb-5"><label htmlFor="exam-school" className="text-sm font-semibold text-slate-300">School</label><select id="exam-school" value={schoolId} onChange={e => setSchoolId(e.target.value)} required className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white">{schoolChooser.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            {submitError && <p role="alert" className="text-rose-400 text-sm mb-4">{submitError}</p>}
         {/* Exam Details */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           className="glassmorphism p-6 rounded-2xl space-y-4"
