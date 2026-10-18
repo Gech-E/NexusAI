@@ -5,6 +5,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -35,6 +36,21 @@ class AuthService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Teacher and administrator roles require administrator approval",
             )
+
+        if not settings.allow_public_registration:
+            if not data.invite_token:
+                raise HTTPException(status_code=403, detail="A school invitation is required")
+            payload = decode_token_safe(data.invite_token)
+            if (
+                not payload
+                or payload.get("type") != "school_invitation"
+                or payload.get("email") != str(data.email).lower()
+                or payload.get("school_slug") != data.school_slug
+                or payload.get("role") != "student"
+            ):
+                raise HTTPException(status_code=403, detail="Invalid or expired school invitation")
+            if not data.school_slug:
+                raise HTTPException(status_code=422, detail="School is required")
 
         existing = await self.session.execute(select(User).where(User.email == data.email))
         if existing.scalar_one_or_none():
