@@ -137,6 +137,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {!collapsed && (
           <button
             onClick={() => setCollapsed(true)}
+            aria-label="Collapse sidebar"
             className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors hidden lg:flex"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -209,6 +210,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#020617] flex">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-xl focus:bg-cyan-400 focus:px-4 focus:py-3 focus:text-slate-950">Skip to main content</a>
       {/* Desktop Sidebar */}
       <motion.aside
         animate={{ width: collapsed ? 72 : 260 }}
@@ -223,6 +225,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {mobileOpen && (
           <>
             <motion.div
+              aria-hidden="true"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -234,10 +237,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              aria-label="Mobile navigation"
               className="fixed top-0 left-0 h-full w-[260px] bg-slate-950 border-r border-slate-800 z-50 lg:hidden"
             >
               <div className="absolute top-4 right-4">
-                <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
+                <button onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -249,6 +253,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content */}
       <motion.main
+        id="main-content"
+        tabIndex={-1}
         animate={{ marginLeft: collapsed ? 72 : 260 }}
         transition={{ duration: 0.2, ease: 'easeInOut' }}
         className="flex-1 min-h-screen hidden lg:block"
@@ -259,6 +265,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {collapsed && (
               <button
                 onClick={() => setCollapsed(false)}
+                aria-label="Expand sidebar"
                 className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
               >
                 <Menu className="w-5 h-5" />
@@ -286,10 +293,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </motion.main>
 
       {/* Mobile Layout */}
-      <div className="flex-1 min-h-screen lg:hidden">
+      <div id="mobile-main-content" className="flex-1 min-h-screen lg:hidden">
         <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3.5 flex items-center justify-between">
           <button
             onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation menu"
             className="p-2 rounded-lg hover:bg-slate-800 text-slate-400"
           >
             <Menu className="w-5 h-5" />
