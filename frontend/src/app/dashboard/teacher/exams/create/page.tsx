@@ -86,9 +86,7 @@ export default function CreateExam() {
   };
 
   if (success) {
-    const schoolChooser = schools.length ? schools : [];
-
-  return (
+    return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-400" />
@@ -107,7 +105,7 @@ export default function CreateExam() {
       </motion.div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2 mb-5"><label htmlFor="exam-school" className="text-sm font-semibold text-slate-300">School</label><select id="exam-school" value={schoolId} onChange={e => setSchoolId(e.target.value)} required className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white">{schoolChooser.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="space-y-2 mb-5"><label htmlFor="exam-school" className="text-sm font-semibold text-slate-300">School</label><select id="exam-school" value={schoolId} onChange={e => setSchoolId(e.target.value)} required className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white">{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             {submitError && <p role="alert" className="text-rose-400 text-sm mb-4">{submitError}</p>}
         {/* Exam Details */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
