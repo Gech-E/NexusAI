@@ -19,6 +19,11 @@ async def ready(db: DbSession) -> dict[str, str]:
     """Readiness: refuse traffic if the database is unavailable."""
     try:
         await db.execute(text("SELECT 1"))
+        # Connectivity alone is insufficient: schema migrations must exist.
+        await db.execute(text("SELECT 1 FROM users LIMIT 1"))
+        await db.execute(text("SELECT 1 FROM schools LIMIT 1"))
+        await db.execute(text("SELECT 1 FROM courses LIMIT 1"))
+        await db.execute(text("SELECT 1 FROM quizzes LIMIT 1"))
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return {"status": "ready"}
