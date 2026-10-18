@@ -20,7 +20,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title=settings.app_name, lifespan=lifespan, version="1.0.0", docs_url="/docs" if settings.app_env == "development" else None, redoc_url=None, openapi_url="/openapi.json" if settings.app_env == "development" else None)
 
 from prometheus_fastapi_instrumentator import Instrumentator
-Instrumentator().instrument(app).expose(app)
+if settings.app_env == "development":
+    Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,
