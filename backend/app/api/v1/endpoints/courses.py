@@ -153,6 +153,8 @@ async def get_course_detail(course_id: UUID, db: DbSession, user: CurrentUser) -
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    await require_school(db, user, course.school_id)
+
     # Enrollment count
     enroll_q = await db.execute(
         select(func.count(Enrollment.id)).where(Enrollment.course_id == course_id)
@@ -177,6 +179,20 @@ async def get_course_detail(course_id: UUID, db: DbSession, user: CurrentUser) -
         "enrollment_count": enrollment_count,
         "quiz_count": quiz_count,
         "created_at": course.created_at.isoformat() if course.created_at else None,
+    }
+
+
+@router.get("/{course_id}/offline-pack")
+async def offline_course_pack(course_id: UUID, db: DbSession, user: CurrentUser) -> dict:
+    """Authorized downloadable text/syllabus, without access tokens or student data."""
+    course = await db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    await require_school(db, user, course.school_id)
+    return {
+        "id": str(course.id), "title": course.title,
+        "subject": course.subject, "description": course.description,
+        "syllabus": course.syllabus or {},
     }
 
 
