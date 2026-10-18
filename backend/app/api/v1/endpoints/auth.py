@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from app.infrastructure.models.institution import School
 
@@ -32,3 +33,12 @@ async def registration_schools(db: DbSession) -> list[dict[str, str]]:
     """Minimal public school directory for student onboarding."""
     result = await db.execute(select(School.id, School.name, School.slug).order_by(School.name).limit(100))
     return [{"id": str(s.id), "name": s.name, "slug": s.slug} for s in result.all()]
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/logout", status_code=204)
+async def logout(data: LogoutRequest, db: DbSession) -> None:
+    await AuthService(db).logout(data.refresh_token)
