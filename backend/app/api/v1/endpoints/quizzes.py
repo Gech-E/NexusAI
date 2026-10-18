@@ -10,6 +10,17 @@ from app.infrastructure.models.assessment import Question, Quiz
 from app.infrastructure.models.institution import School
 from app.infrastructure.models.user import UserRole
 
+
+def can_manage_quiz(quiz: Quiz, user) -> bool:
+    """Only the creating teacher or a platform admin may manage an assessment."""
+    roles = {assignment.role for assignment in user.roles}
+    return UserRole.ADMIN in roles or (UserRole.TEACHER in roles and quiz.created_by_user_id == user.id)
+
+
+def assert_can_manage_quiz(quiz: Quiz, user) -> None:
+    if not can_manage_quiz(quiz, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage this quiz")
+
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
 
@@ -46,16 +57,9 @@ async def list_quizzes(db: DbSession, user: CurrentUser) -> list[Quiz]:
 
 @router.post("", response_model=QuizRead, dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))])
 async def create_quiz(payload: QuizCreate, db: DbSession, user: CurrentUser) -> Quiz:
-    # Ensure school exists to prevent IntegrityError in demo environment
     school_res = await db.execute(select(School).where(School.id == payload.school_id))
     if not school_res.scalar_one_or_none():
-        demo_school = School(
-            id=payload.school_id,
-            name="Default Demo School",
-            slug="default-demo-school",
-        )
-        db.add(demo_school)
-        await db.flush()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="School not found")
 
     quiz = Quiz(
         school_id=payload.school_id,
@@ -336,6 +340,8 @@ async def get_quiz_detail(quiz_id: UUID, db: DbSession, user: CurrentUser) -> di
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
 
+    assert_can_manage_quiz(quiz, user)
+
     # Count attempts
     attempt_count_q = await db.execute(
         select(func.count(QuizAttempt.id)).where(QuizAttempt.quiz_id == quiz_id)
@@ -380,11 +386,12 @@ async def get_quiz_detail(quiz_id: UUID, db: DbSession, user: CurrentUser) -> di
     "/{quiz_id}",
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
-async def delete_quiz(quiz_id: UUID, db: DbSession) -> dict:
+async def delete_quiz(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     """Delete a quiz and all its questions/attempts (cascade)."""
     quiz = await db.get(Quiz, quiz_id)
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+    assert_can_manage_quiz(quiz, user)
     await db.delete(quiz)
     await db.commit()
     return {"status": "deleted", "quiz_id": str(quiz_id)}
@@ -394,12 +401,14 @@ async def delete_quiz(quiz_id: UUID, db: DbSession) -> dict:
     "/{quiz_id}/results",
     dependencies=[Depends(require_roles(UserRole.TEACHER, UserRole.ADMIN))],
 )
-async def quiz_results(quiz_id: UUID, db: DbSession) -> dict:
+async def quiz_results(quiz_id: UUID, db: DbSession, user: CurrentUser) -> dict:
     """Get all student results for a specific quiz (teacher view)."""
     # Verify quiz exists
     quiz = await db.get(Quiz, quiz_id)
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+
+    assert_can_manage_quiz(quiz, user)
 
     # Get all submitted attempts with results
     from app.infrastructure.models.user import User as UserModel
