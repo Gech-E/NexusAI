@@ -170,6 +170,20 @@ async def update_user_role(user_id: UUID, payload: RoleUpdate, db: DbSession) ->
     if existing_q.scalar_one_or_none():
         return {"id": str(user_id), "role": payload.role, "status": "already_assigned"}
 
+    if new_role == UserRole.TEACHER:
+        student_profile = (await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == user_id)
+        )).scalar_one_or_none()
+        teacher_profile = (await db.execute(
+            select(TeacherProfile).where(TeacherProfile.user_id == user_id)
+        )).scalar_one_or_none()
+        if not teacher_profile:
+            if not student_profile:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Assign this user to a school before granting teacher access",
+                )
+            db.add(TeacherProfile(user_id=user_id, school_id=student_profile.school_id, metadata_={}))
     db.add(UserRoleAssignment(user_id=user_id, role=new_role))
     await db.commit()
     return {"id": str(user_id), "role": payload.role, "status": "assigned"}
