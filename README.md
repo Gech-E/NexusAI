@@ -1,79 +1,199 @@
-# Release status
+# Nexus LearnAI
 
-**NexusAI is not yet approved for production use with student data.** See [production readiness checklist](docs/production-readiness.md) and [draft pull request #2](https://github.com/Gech-E/NexusAI/pull/2) for current controls, validation and remaining blockers.
+**An offline-aware learning management system for connected and low-connectivity classrooms.**
 
-# 🧠 Nexus LearnAI — Intelligent Offline-First LMS
+[![CI](https://github.com/Gech-E/NexusAI/actions/workflows/main.yml/badge.svg)](https://github.com/Gech-E/NexusAI/actions/workflows/main.yml)
+![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs)
+![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.12-009688?logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-4169E1?logo=postgresql)
 
-Nexus LearnAI is a state-of-the-art Learning Management System designed for the next generation of education. It features a high-performance **FastAPI** backend, a stunning **Next.js 15** frontend, and advanced **AI-powered proctoring and tutoring** capabilities.
+[**Live portfolio demo**](https://nexus-ai-omega-ten.vercel.app) · [**API health**](https://nexus-learnai-api-demo.onrender.com/api/v1/health) · [**Architecture and improvement plan**](docs/improvement-plan.md) · [**Release checklist**](docs/production-readiness.md)
 
-![Nexus Student Dashboard](https://images.unsplash.com/photo-1501504905252-473c47e087f8?auto=format&fit=crop&q=80&w=1200)
+> **Project status:** Portfolio / active development. The hosted demo runs on free-tier services and is **not approved for real student data or production school deployments**. Some advanced AI, offline, and proctoring capabilities are experimental or incomplete.
 
-## 🚀 Key Features
+## Overview
 
-### 👨‍🎓 For Students
+Nexus LearnAI brings course delivery, assessments, progress tracking, and AI-assisted study tools into one responsive platform. It is designed with intermittent connectivity in mind and supports separate workflows for **students**, **teachers**, and **administrators**.
 
-- **Interactive AI Tutor**: Personalized real-time learning assistance powered by local RAG (Retrieval-Augmented Generation).
-- **Offline-First Mode**: Track your progress and take assessments even without an internet connection; data syncs automatically when back online.
-- **Skill Mastery Analytics**: Visualise your learning journey with dynamic charts and performance trends.
-- **Smart Quizzes**: Adaptive assessments that adjust to your level.
+### Current capabilities
 
-### 👩‍🏫 For Teachers
+| Area | What's available |
+| --- | --- |
+| **Student learning** | Browse and enroll in school courses, take quizzes, review results, and view progress summaries. |
+| **Teaching** | Create courses and quizzes, review assessment outcomes, and explore classroom analytics. |
+| **Administration** | Manage institutions and user roles; issue school-bound student invitations. |
+| **Authentication & access** | JWT-based authentication, refresh-token rotation, role checks, and institution-scoped access on core learning endpoints. |
+| **Offline support** | Cache permitted course descriptions/syllabuses in IndexedDB, save started quiz attempts, and retry submissions when reconnected. |
+| **Progress synchronization** | Apply validated course-progress updates with enrollment checks and duplicate handling. |
+| **AI assistance** | Tutor endpoints and interface with optional configured AI-provider integration; availability depends on backend configuration. |
 
-- **Live CV Proctoring**: Real-time Computer Vision alerts for exam integrity (Gaze detection, unauthorized materials).
-- **Classroom Insights**: Deep analytics on student performance and engagement.
-- **Exam Builder**: Create and schedule smart assessments with customizable proctoring levels.
-- **WebSocket Alert Stream**: Instant notifications for proctoring events during active exams.
+**In development:** complete offline course media and navigation, adaptive assessment policies, distributed exam monitoring, multilingual learning materials, and additional security and scaling controls. The current proctoring interface should not be presented as a fully validated automated cheating detector.
 
-## 🛠️ Technology Stack
+## Tech stack
 
-| Layer        | Technology                                                |
-| ------------ | --------------------------------------------------------- |
-| **Frontend** | Next.js 15, React 19, TailwindCSS, Framer Motion, Zustand |
-| **Backend**  | FastAPI (Python 3.12+), SQLAlchemy 2.0, Pydantic v2       |
-| **Database** | PostgreSQL / SQLite (Development), Redis (Caching)        |
-| **AI/ML**    | ONNX Runtime, Custom C++ Bindings (Optional High-Perf)    |
-| **DevOps**   | Docker, Uvicorn, WatchFiles                               |
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, Zustand |
+| API | FastAPI, Python 3.12, Pydantic 2 |
+| Persistence | SQLAlchemy 2, PostgreSQL; SQLite for local development |
+| Migrations | Alembic |
+| Optional integrations | Google Generative AI, Redis/Celery, ONNX/C++ modules |
+| Delivery | GitHub Actions, Docker, Vercel (frontend), Render (API) |
 
-## 📦 Getting Started
+## Architecture
 
-### 1. Prerequisites
+\`\`\`text
+                     Browser / Next.js
+                    (Vercel frontend)
+                            |
+                  HTTPS REST API requests
+                            |
+                     FastAPI backend
+                      (Render service)
+                       /          \
+             JWT + school RBAC   AI integrations
+                       |
+                SQLAlchemy / Alembic
+                       |
+                     PostgreSQL
 
-- **Python 3.12+**
-- **Node.js 20+**
-- **PostgreSQL** (Optional, SQLite works out of the box)
+  Browser IndexedDB: cached reading content and queued quiz attempts
+\`\`\`
 
-### 2. Backend Setup
+Offline quiz answers are scored **on the server after reconnection**. Full application-wide offline operation is not yet supported.
 
-```bash
-cd nexus-learnai/backend
+## Run locally
+
+### Prerequisites
+
+- Python **3.12+**
+- Node.js **22+** and npm
+- Git
+
+SQLite can be used for local development; PostgreSQL is recommended for staging and required for non-development backend configurations.
+
+### 1. Clone the repository
+
+\`\`\`bash
+git clone https://github.com/Gech-E/NexusAI.git
+cd NexusAI
+\`\`\`
+
+### 2. Start the backend
+
+\`\`\`bash
+cd backend
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\Activate
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+cp .env.example .env          # Windows: copy .env.example .env
+\`\`\`
 
-### 3. Frontend Setup
+For a local-only environment, set the following values in \`backend/.env\`:
 
-```bash
-cd nexus-learnai/frontend
-npm install
-npm run dev
-```
-
-## 🔒 Environment Configuration
-
-Create a `.env` file in the `backend/` directory:
-
-```env
-APP_NAME="Nexus LearnAI"
+\`\`\`dotenv
 APP_ENV=development
-DATABASE_URL=sqlite+aiosqlite:///./nexus_learnai.db
-JWT_SECRET_KEY=your-super-secret-key
-```
+DEBUG=false
+DATABASE_URL=sqlite+aiosqlite:///./nexus_local.db
+CORS_ORIGINS=http://localhost:3000
+JWT_SECRET_KEY=replace-with-your-own-long-random-development-secret
+ALLOW_PUBLIC_REGISTRATION=false
+\`\`\`
 
-## 📈 Roadmap
+Create the **first administrator** using the interactive, local-only command:
 
-- [ ] Mobile App (React Native)
-- [ ] Multi-Modal AI Tutor (Voice & Image)
-- [ ] Advanced LTI 1.3 Integration
-- [ ] Decentralized Credentialing (Blockchain)
+\`\`\`bash
+python -m scripts.bootstrap_admin
+uvicorn app.main:app --reload
+\`\`\`
+
+The admin bootstrap is intended to be run once. Development mode initializes the local schema. Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the development API reference and [http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready) for database readiness.
+
+### 3. Start the frontend
+
+Open a second terminal from the repository root:
+
+\`\`\`bash
+cd frontend
+npm ci
+\`\`\`
+
+Create \`frontend/.env.local\`:
+
+\`\`\`dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8000
+\`\`\`
+
+Then run:
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+Open **http://localhost:3000**.
+
+### 4. Try the learning workflow
+
+1. Sign in with the administrator account you created locally.
+2. Create an institution, then issue a student invitation associated with an email address.
+3. Register a student using that invitation and its matching email.
+4. Assign a teacher role to an appropriate account through the administrator workflow.
+5. Create a course and quiz, enroll the student, submit an assessment, and review the result.
+6. Test reconnection by starting a quiz online, disconnecting, and submitting the saved attempt once the connection returns.
+
+> New users **cannot self-assign teacher/admin roles** or join arbitrary institutions. Student registration normally requires an administrator-issued invitation.
+
+## Tests and quality checks
+
+\`\`\`bash
+# Backend, from backend/
+python -m pytest -q tests
+
+# Frontend, from frontend/
+npm run typecheck
+npm run lint
+npm run build
+\`\`\`
+
+GitHub Actions runs backend tests and the frontend validation/build workflow for pushes and pull requests. Green CI does **not** replace deployment or security testing.
+
+## Hosted demo and deployment
+
+| Component | Link |
+| --- | --- |
+| Web application | [nexus-ai-omega-ten.vercel.app](https://nexus-ai-omega-ten.vercel.app) |
+| API | [nexus-learnai-api-demo.onrender.com](https://nexus-learnai-api-demo.onrender.com) |
+| API health | [\`/api/v1/health\`](https://nexus-learnai-api-demo.onrender.com/api/v1/health) |
+| Database readiness | [\`/api/v1/health/ready\`](https://nexus-learnai-api-demo.onrender.com/api/v1/health/ready) |
+
+The frontend reads \`NEXT_PUBLIC_API_URL\` to locate the backend. Render requires \`DATABASE_URL\`, a unique \`JWT_SECRET_KEY\`, and HTTPS \`CORS_ORIGINS\` for a non-development deployment. Database migrations must run before serving learning-data requests.
+
+See [Render deployment guidance](docs/render-deployment.md) for setup details. **Free-tier services may be slow to wake, and free database storage can expire.** Hosted links show the current portfolio environment, not a service-level availability guarantee.
+
+## Repository structure
+
+\`\`\`text
+NexusAI/
+├── frontend/         Next.js application
+├── backend/          FastAPI routes, services, ORM models, migrations, tests
+├── cpp-engine/       Experimental native performance modules
+├── docker/           Container orchestration and proxy configuration
+├── infrastructure/   Infrastructure configurations
+├── docs/             Architecture, release checks, deployment guidance
+├── scripts/          Project utilities
+└── render.yaml       Render deployment blueprint
+\`\`\`
+
+## Security and release status
+
+This is a portfolio implementation, **not a production-certified student information system**. Before onboarding real schools, further work is required on secure session cookies/MFA, comprehensive cross-tenant verification, data protection for minors, backups and restoration, full offline reliability, accessibility, and load testing.
+
+- [Production readiness checklist](docs/production-readiness.md)
+- [Architecture and improvement roadmap](docs/improvement-plan.md)
+- [Render deployment instructions](docs/render-deployment.md)
+
+Do not commit credentials, tokens, environment files, or real student records. Use synthetic data when testing the hosted demo.
+
+---
+
+**Built as an exploration of accessible, resilient digital learning infrastructure.**
