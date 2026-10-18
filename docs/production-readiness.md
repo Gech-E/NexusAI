@@ -34,3 +34,11 @@ Student dashboard has course-first responsive UX with real enrollment counts and
 For the initial platform administrator, `cd backend && python -m scripts.bootstrap_admin` is available. Do not run it in public web code and do not set weak passwords.
 
 No production go-live claim should be made until the checklist is complete.
+
+## October 18 subsequent changes
+
+- Teacher analytics and student roster queries have been replaced with school-scoped versions; legacy cross-school aggregates have been removed from those routes. Integration tests across two or more schools remain required.
+- Learners can save an authorized course description/syllabus to user-partitioned IndexedDB and load saved course text when disconnected. Downloaded content does not yet include videos, full lesson media, or service-worker-powered offline navigation.
+- The quiz screen caches a started attempt and queues answers in IndexedDB when offline. A reconnect sends its original server-issued attempt ID; the server locks the attempt and handles exact repeated submissions without issuing a new result. Multiple devices and assessment snapshot validity require further tests.
+- Quiz creation rejects a course ID belonging to another school.
+- These changes are in a draft PR; do not claim them production-ready until tenant isolation, end-to-end offline tests, accessibility checks, and deployment security review pass.
