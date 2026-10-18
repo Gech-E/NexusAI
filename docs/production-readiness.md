@@ -1,44 +1,101 @@
-# Production launch gate for NexusAI
+# NexusAI production release review — 2026-10-18
 
-**Status: NOT production certified.** This project is still under active security and systems development. A green build is necessary but not sufficient for launch with actual students.
+**Decision: NO-GO for real student and school data.** This draft branch contains
+substantial security and reliability improvements and passing CI, but still
+needs deployment credentials, a database migration baseline and field
+validation. A successful build or preview is not a security certification.
 
-## Required before real institutions use it
+## Implemented in draft PR #2
 
-- [ ] Enforce school and teacher ownership for **every** API and WebSocket including analytics, AI transcripts, recommendations, exam results and administrative actions. Add negative cross-tenant integration tests.
-- [ ] Implement database schema migrations (Alembic) and test forward/backward changes against real PostgreSQL with backups and recovery.
-- [ ] Replace the logging-only offline-sync API with typed, transactional domain event handlers, unique event IDs, conflict policy, retry protocol and user-scoped encrypted IndexedDB. Current browser queues do not make quizzes truly offline.
-- [ ] Secure browser sessions: rotate refresh credentials safely across tabs, avoid long-lived refresh tokens in localStorage, add logout/revocation, MFA for staff, audit events and IP/account throttling.
-- [ ] Obtain informed consent and child-data policy review before enabling CV monitoring; never infer cheating automatically from gaze alone. Current CV WebSocket is authenticated but does not actually run proctoring inference.
-- [ ] Add school onboarding, invitation-based teacher registration, and administrators scoped to each school. Platform admin should be rare.
-- [ ] Ensure quizzes cannot leak answer keys or classmates' results through ancillary analytics or caching.
-- [ ] Remove all fake KPI charts from student, teacher and admin pages, or prominently label them as demonstration data.
-- [ ] Introduce service-worker/offline curriculum packs and mobile/keyboard/screen-reader e2e verification with slow network emulation.
-- [ ] Configure TLS, CORS origins, PostgreSQL credentials, Redis auth, JWT secret, secrets vault, safe log redaction, S3-compatible storage and rate limits.
-- [ ] Configure multi-worker load tests for login, quiz submissions and sync with realistic data; verify indexes, DB pooling and autoscaling thresholds.
-- [ ] Enable protected main branch, review requirements, vulnerability scanning, dependency updates, observability, backups and an incident runbook.
-- [ ] Obtain privacy/legal review appropriate for minors and relevant regions, including data retention/export/deletion procedures.
+- School-scoped course, quiz, offline pack, roster and teacher analytics access;
+  answer keys and results require teacher ownership or platform-admin access.
+- Student sign-up requires a signed email-bound, seven-day school invitation.
+  Platform admins can issue it via `POST /api/v1/admin/invitations`. Self-service
+  school admission is disabled by default. Role promotion remains admin-only.
+- AI conversation IDs are owner-validated at the endpoint and at the message
+  persistence layer. Global AI stats and unscoped narratives are admin-only.
+- JWT deployment secrets are checked, refresh rotation uses a row lock and
+  subject verification, and users can revoke a refresh credential at logout.
+- Offline courses store permitted syllabus text in user-scoped IndexedDB.
+  Existing, server-issued quiz attempts may be submitted after reconnecting;
+  submitting the same answers again is idempotent.
+- Bulk sync now supports only validated `course_progress` events, checks
+  enrollment ownership, applies changes to domain tables and keeps the
+  higher course completion percentage when an older device reconnects.
+  Unsupported event types fail instead of being falsely marked synced.
+- Modernized student dashboard and clearer onboarding, navigation and
+  reduced-motion accessibility.
+- Backend container uses Python 3.12 and runs without root; frontend uses
+  a non-root user, npm ci and same-origin API routing. Internal ports are
+  not published by Compose. Production API docs and Prometheus endpoint
+  are disabled and a database readiness route is available.
+- Automated tests cover distinct schools, protected answer keys, AI authorization,
+  student roster scoping, invitations required, progress sync and quiz retries.
 
-## Currently improved on draft PR #2
+## Blocking go-live tasks
 
-Student dashboard has course-first responsive UX with real enrollment counts and quiz metrics. Registration chooses an existing school, the exam builder uses authorized school IDs, teachers promoted by an administrator are linked to their school, and the platform-admin bootstrap is a server-only CLI. Course and assessment listings are scoped by school; quizzes require their teacher owner or admin for answer key/results/deletion. JWT and offline-sync input validation were strengthened. The CV notification WebSocket now authenticates callers and does not fabricate alerts.
+1. **Database migrations (P0).** The production lifespan intentionally does not
+   create tables. There is no reviewed initial Alembic migration chain. Create
+   a reproducible baseline and rehearse migrations against a PostgreSQL copy
+   with rollback/backup before using a live database.
+2. **Sessions and account safety (P0).** Browser auth still stores access and
+   refresh tokens in localStorage. Replace refresh token storage with Secure,
+   HttpOnly, SameSite cookies and CSRF protection; deploy MFA/SSO for staff,
+   signup invitation revocation and account-level brute-force protection.
+3. **Institution authorization (P0).** Negative tests cover core learning
+   endpoints but are not an exhaustive audit of analytics, proctoring,
+   recommendation services, every administrative route or background job.
+   Remove shared-scope queries and test all cross-school access paths.
+4. **Durable offline-first design (P0).** IndexedDB is only a first layer.
+   Add a service worker/app shell, full lesson asset downloads, explicit cache
+   eviction, encrypted storage/retention for shared devices, replay/conflict
+   tests under concurrent clients, offline logout cleanup and queue diagnostics.
+   Bulk sync supports course progress only; other event types are rejected.
+5. **Reliable scaling (P0).** Current proctoring WebSocket manager is in-memory,
+   so it does not broadcast across multiple replicas. Redis message fanout,
+   a task queue, indexes, capacity/load tests, timeouts and resource limits
+   are required before horizontal scale.
+6. **Safety and privacy (P0).** Complete a child-data and exam-monitoring
+   impact review, retention/export/deletion policies, educator approvals and
+   human-review safeguards. Gaze alerts must never be treated as proof of cheating.
+7. **Operations (P0).** Configure HTTPS ingress, DNS, managed PostgreSQL with
+   backups/restore drills, authenticated Redis, secrets management, access logs,
+   audit logging, alerts, staging, image scanning, dependency updates,
+   disaster recovery and an on-call incident/rollback procedure.
+8. **User acceptance (P1).** Test accessibility with keyboard/screen reader,
+   low-bandwidth devices, multilingual lessons and teacher and student
+   onboarding in the target schools, including exam recovery on spotty networks.
 
-## Validation and rollout procedure
+## Staging setup, not a public production deployment
 
-1. Merge only after all PR checks pass and reviewers check security and API behavior.
-2. Provision a staging PostgreSQL database and explicit secrets. Run database migrations and seed school records through authorized admin workflows.
-3. Run `cd backend && python -m pytest -q tests` and frontend `npm ci && npm run typecheck && npm run lint && npm run build`.
-4. Build isolated frontend/backend images, deploy to staging, exercise registration, administrator provisioning, teacher promotion, course enrollment, quiz creation/submission, analytics, offline/online switching and revocation.
-5. Run negative cross-tenant tests and a load test before gradually onboarding pilot users.
-6. Capture performance/error/availability signals and create a rollback path.
+The Compose example now publishes Nginx only on loopback port 8080.
+A trusted separate HTTPS gateway must terminate TLS and forward requests.
+Set `PUBLIC_ORIGIN=https://your-domain`, a random 32+-character
+`JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, and `GRAFANA_PASSWORD` in a
+private Docker environment file, never in Git. Do **not** expose database,
+Redis or application container ports directly on the internet.
+Environment variables must be supplied before starting services; browser
+API requests use the same public origin through Nginx.
 
-For the initial platform administrator, `cd backend && python -m scripts.bootstrap_admin` is available. Do not run it in public web code and do not set weak passwords.
+The initial schema migration prerequisite means startup is **not a complete
+one-command production install**. Provision the database and an operator-only
+administrator carefully. Use `python -m scripts.bootstrap_admin` in the
+backend container only after a database schema exists; keep admin credentials
+outside logs and source control.
 
-No production go-live claim should be made until the checklist is complete.
+Useful pre-release verification:
 
-## October 18 subsequent changes
+- `cd backend && python -m pytest -q tests`
+- `cd frontend && npm ci && npm run typecheck && npm run lint && npm run build`
+- Test `/api/v1/health/ready` through the staging ingress.
+- Test two-school isolation, invited student signup, account revocation,
+  interrupted quiz submission, reconnection, course progress conflict,
+  backups, and database failover on staging PostgreSQL.
+- Load-test login, quiz submission and sync with realistic expected concurrency.
+- Recheck the *latest PR head* GitHub Actions before a security review and merge.
 
-- Teacher analytics and student roster queries have been replaced with school-scoped versions; legacy cross-school aggregates have been removed from those routes. Integration tests across two or more schools remain required.
-- Learners can save an authorized course description/syllabus to user-partitioned IndexedDB and load saved course text when disconnected. Downloaded content does not yet include videos, full lesson media, or service-worker-powered offline navigation.
-- The quiz screen caches a started attempt and queues answers in IndexedDB when offline. A reconnect sends its original server-issued attempt ID; the server locks the attempt and handles exact repeated submissions without issuing a new result. Multiple devices and assessment snapshot validity require further tests.
-- Quiz creation rejects a course ID belonging to another school.
-- These changes are in a draft PR; do not claim them production-ready until tenant isolation, end-to-end offline tests, accessibility checks, and deployment security review pass.
+## Engineering decision
+
+Keep pull request #2 in draft. Enforce branch protection and independent
+review. Production launch is an operator sign-off after remaining P0 items
+have been implemented and verified; do not claim readiness solely from CI.
