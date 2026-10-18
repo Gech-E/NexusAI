@@ -5,7 +5,8 @@
  * - Provides typed fetch helpers
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Same-origin by default: never expose an internal Docker hostname to browsers.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 let isRefreshing = false;
 let refreshQueue: Array<() => void> = [];
