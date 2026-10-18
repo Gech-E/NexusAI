@@ -106,6 +106,61 @@ async def test_cross_school_isolation_and_ai_authorization():
 
             hidden_ai = await client.get("/api/v1/ai/stats", headers=auth("student_a"))
             assert hidden_ai.status_code == 403
+            registration = await client.post(
+                "/api/v1/auth/register",
+                json={"email": "intruder@test.edu", "password": "long-enough-password",
+                      "full_name": "Uninvited User", "school_slug": "school-alpha"},
+            )
+            assert registration.status_code == 403
+
+            enrollment = await client.post(
+                f"/api/v1/courses/{ids['course_a']}/enroll", headers=auth("student_a")
+            )
+            assert enrollment.status_code == 200
+            event = {
+                "device_id": "tablet-one",
+                "records": [{"entity_type": "course_progress", "entity_id": str(ids["course_a"]),
+                             "operation": "upsert", "data": {"progress_pct": 40}}],
+            }
+            applied = await client.post("/api/v1/sync/bulk", headers=auth("student_a"), json=event)
+            assert applied.status_code == 201 and applied.json()["synced"] == 1
+            duplicate = await client.post("/api/v1/sync/bulk", headers=auth("student_a"), json=event)
+            assert duplicate.status_code == 201 and duplicate.json()["skipped_duplicates"] == 1
+
+            event["records"][0]["data"]["progress_pct"] = 20
+            older = await client.post("/api/v1/sync/bulk", headers=auth("student_a"), json=event)
+            assert older.status_code == 201
+            enrolled = await client.get("/api/v1/courses/me/enrolled", headers=auth("student_a"))
+            assert enrolled.json()[0]["progress"] == 40
+
+            event["records"][0]["entity_id"] = str(ids["course_b"])
+            foreign_sync = await client.post("/api/v1/sync/bulk", headers=auth("student_a"), json=event)
+            assert foreign_sync.status_code == 403
+            unsupported = await client.post("/api/v1/sync/bulk", headers=auth("student_a"),
+                json={"device_id": "tablet-one", "records": [{"entity_type": "quiz_attempt",
+                       "entity_id": str(ids["quiz_a"]), "data": {}}]})
+            assert unsupported.status_code == 422
+
+            start = await client.post(
+                f"/api/v1/quizzes/{ids['quiz_a']}/start", headers=auth("student_a")
+            )
+            assert start.status_code == 200
+            qid = start.json()["questions"][0]["id"]
+            body = {"attempt_id": start.json()["attempt_id"], "answers": {qid: 0}}
+            first = await client.post(
+                f"/api/v1/quizzes/{ids['quiz_a']}/submit", headers=auth("student_a"), json=body
+            )
+            assert first.status_code == 200 and first.json()["correct_count"] == 1
+            retry = await client.post(
+                f"/api/v1/quizzes/{ids['quiz_a']}/submit", headers=auth("student_a"), json=body
+            )
+            assert retry.status_code == 200 and retry.json()["score"] == first.json()["score"]
+            changed = await client.post(
+                f"/api/v1/quizzes/{ids['quiz_a']}/submit", headers=auth("student_a"),
+                json={"attempt_id": start.json()["attempt_id"], "answers": {qid: 1}},
+            )
+            assert changed.status_code == 409
+
             foreign_conversation = await client.post(
                 "/api/v1/ai/tutor/query",
                 headers=auth("student_a"),
