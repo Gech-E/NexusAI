@@ -16,6 +16,7 @@ export default function RegisterPage() {
     email: '',
     password: '',
     schoolSlug: '',
+    inviteToken: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [schools, setSchools] = useState<{ id: string; name: string; slug: string }[]>([]);
@@ -39,7 +40,8 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: `${formData.firstName} ${formData.lastName}`,
-        school_slug: formData.schoolSlug || undefined
+        school_slug: formData.schoolSlug || undefined,
+        invite_token: formData.inviteToken.trim() || undefined
       };
 
       const { access_token, refresh_token } = await apiPost<{ access_token: string; refresh_token: string }>(
@@ -154,7 +156,12 @@ export default function RegisterPage() {
               </select>
               {schools.length === 0 && <p className="text-amber-300 text-xs mt-2">No schools available. Contact the platform administrator to register your school.</p>}
             </div>
-                        <p className="text-sm text-slate-400">New accounts start as students. Teachers can request access from their school administrator.</p>
+                        <div className="space-y-2">
+              <label htmlFor="registration-invite" className="block text-sm font-medium text-slate-300">School invitation code</label>
+              <textarea id="registration-invite" value={formData.inviteToken} onChange={e => setFormData({...formData, inviteToken: e.target.value})} required rows={2} maxLength={4096} placeholder="Paste the invitation shared by your school" className="w-full rounded-xl border border-slate-700 bg-slate-900/50 px-4 py-3 text-white" />
+              <p className="text-xs text-slate-400">Your school administrator provides this code. It is linked to your email address and expires after seven days.</p>
+            </div>
+            <p className="text-sm text-slate-400">New accounts start as students. Teachers can request access from their school administrator.</p>
 
             <div>
               <label htmlFor="reg-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
