@@ -27,6 +27,15 @@ class AuthService:
         self.session = session
 
     async def register(self, data: RegisterRequest) -> TokenPair:
+        from fastapi import HTTPException, status
+
+        # Self-service registration must never grant privileged roles.
+        if data.role not in (None, "student"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher and administrator roles require administrator approval",
+            )
+
         existing = await self.session.execute(select(User).where(User.email == data.email))
         if existing.scalar_one_or_none():
             from fastapi import HTTPException, status
@@ -41,10 +50,7 @@ class AuthService:
         self.session.add(user)
         await self.session.flush()
 
-        # Assign the requested role, default to STUDENT
-        role_map = {"teacher": UserRole.TEACHER, "admin": UserRole.ADMIN}
-        assigned_role = role_map.get(data.role, UserRole.STUDENT) if data.role else UserRole.STUDENT
-        self.session.add(UserRoleAssignment(user_id=user.id, role=assigned_role))
+        self.session.add(UserRoleAssignment(user_id=user.id, role=UserRole.STUDENT))
 
         if data.school_slug:
             res = await self.session.execute(select(School).where(School.slug == data.school_slug))
