@@ -11,6 +11,7 @@ import {
   Target, X
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { apiPost } from '@/lib/api';
 
 interface NavItem {
   label: string;
@@ -105,9 +106,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setMobileOpen(false);
   }, [pathname]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = useAppStore.getState().refreshToken;
+    // Local sign-out always succeeds, including when connectivity is lost.
     logout();
-    router.push('/');
+    if (token && navigator.onLine) {
+      try {
+        await apiPost('/api/v1/auth/logout', { refresh_token: token }, { noAuth: true });
+      } catch {
+        // The credential expires naturally; a future cookie-based session
+        // implementation can make revocation reliable across outages.
+      }
+    }
+    router.replace('/login');
   };
 
   const isActive = (href: string) => {
