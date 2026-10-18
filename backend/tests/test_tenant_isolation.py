@@ -36,7 +36,8 @@ async def test_cross_school_isolation_and_ai_authorization():
         student_b = User(email="student-beta@test.edu", full_name="Student B", hashed_password="!")
         teacher_a = User(email="teacher-alpha@test.edu", full_name="Teacher A", hashed_password="!")
         teacher_b = User(email="teacher-beta@test.edu", full_name="Teacher B", hashed_password="!")
-        session.add_all([student_a, student_b, teacher_a, teacher_b])
+        admin = User(email="platform-admin@test.edu", full_name="Platform Admin", hashed_password="!")
+        session.add_all([student_a, student_b, teacher_a, teacher_b, admin])
         await session.flush()
         session.add_all([
             StudentProfile(user_id=student_a.id, school_id=alpha.id),
@@ -47,6 +48,7 @@ async def test_cross_school_isolation_and_ai_authorization():
             UserRoleAssignment(user_id=student_b.id, role=UserRole.STUDENT),
             UserRoleAssignment(user_id=teacher_a.id, role=UserRole.TEACHER),
             UserRoleAssignment(user_id=teacher_b.id, role=UserRole.TEACHER),
+            UserRoleAssignment(user_id=admin.id, role=UserRole.ADMIN),
         ])
         course_a = Course(school_id=alpha.id, teacher_user_id=teacher_a.id, title="Physics", subject="Physics")
         course_b = Course(school_id=beta.id, teacher_user_id=teacher_b.id, title="History", subject="History")
@@ -63,6 +65,7 @@ async def test_cross_school_isolation_and_ai_authorization():
         await session.commit()
         ids = {
             "student_a": student_a.id, "student_b": student_b.id, "teacher_a": teacher_a.id,
+            "admin": admin.id,
             "alpha": alpha.id, "beta": beta.id,
             "course_a": course_a.id, "course_b": course_b.id,
             "quiz_a": quiz_a.id, "quiz_b": quiz_b.id,
@@ -112,6 +115,24 @@ async def test_cross_school_isolation_and_ai_authorization():
                       "full_name": "Uninvited User", "school_slug": "school-alpha"},
             )
             assert registration.status_code == 403
+
+            invite = await client.post(
+                "/api/v1/admin/invitations", headers=auth("admin"),
+                json={"email": "invited-student@test.edu", "school_id": str(ids["alpha"])},
+            )
+            assert invite.status_code == 200
+            invite_body = invite.json()
+            invited = await client.post(
+                "/api/v1/auth/register",
+                json={"email": "invited-student@test.edu", "password": "secure-passphrase-123",
+                      "full_name": "Invited Student", "school_slug": "school-alpha",
+                      "invite_token": invite_body["invite_token"]},
+            )
+            assert invited.status_code == 200
+            invited_me = await client.get("/api/v1/users/me",
+                headers={"Authorization": "Bearer " + invited.json()["access_token"]})
+            assert invited_me.status_code == 200
+            assert invited_me.json()["roles"] == ["student"]
 
             enrollment = await client.post(
                 f"/api/v1/courses/{ids['course_a']}/enroll", headers=auth("student_a")
