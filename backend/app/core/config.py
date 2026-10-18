@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal, Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,12 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_deployment_secret(self) -> "Settings":
+        if self.app_env != "development" and self.jwt_secret_key == "dev-only-change-me-16chars":
+            raise ValueError("Set JWT_SECRET_KEY before deploying outside development")
+        return self
 
     @property
     def celery_broker(self) -> str:
