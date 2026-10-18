@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from app.infrastructure.models.institution import School
 
 from app.application.services.auth_service import AuthService
 from app.deps import DbSession
@@ -23,3 +25,10 @@ async def login(data: LoginRequest, db: DbSession) -> TokenPair:
 async def refresh_token(data: RefreshRequest, db: DbSession) -> TokenPair:
     service = AuthService(db)
     return await service.refresh(data.refresh_token)
+
+
+@router.get("/schools")
+async def registration_schools(db: DbSession) -> list[dict[str, str]]:
+    """Minimal public school directory for student onboarding."""
+    result = await db.execute(select(School.id, School.name, School.slug).order_by(School.name).limit(100))
+    return [{"id": str(s.id), "name": s.name, "slug": s.slug} for s in result.all()]
