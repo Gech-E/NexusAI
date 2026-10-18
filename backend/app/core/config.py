@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_render_postgres_url(cls, value: str) -> str:
+        """Convert Render PostgreSQL URLs to SQLAlchemy's asyncpg driver."""
+        if value.startswith("postgres://"):
+            value = "postgresql://" + value[len("postgres://"):]
+        if value.startswith("postgresql://"):
+            value = "postgresql+asyncpg://" + value[len("postgresql://"):]
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors(cls, v: str | list[str]) -> list[str]:
@@ -62,6 +72,8 @@ class Settings(BaseSettings):
                 raise ValueError("Set a unique JWT_SECRET_KEY of at least 32 characters")
             if self.debug:
                 raise ValueError("DEBUG must be false outside development")
+            if not self.database_url.startswith("postgresql+asyncpg://"):
+                raise ValueError("Production/staging requires PostgreSQL via asyncpg")
             if not self.cors_origins or any(not origin.startswith("https://") for origin in self.cors_origins):
                 raise ValueError("Non-development CORS_ORIGINS must be explicit HTTPS origins")
         return self
