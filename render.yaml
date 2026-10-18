@@ -1,0 +1,40 @@
+# Render Blueprint: production foundation. Deploy only after review.
+services:
+  - type: web
+    name: nexus-learnai-api
+    runtime: docker
+    repo: https://github.com/Gech-E/NexusAI
+    branch: main
+    rootDir: backend
+    dockerfilePath: backend/Dockerfile
+    healthCheckPath: /api/v1/health/ready
+    preDeployCommand: cd /app && alembic upgrade head
+    autoDeployTrigger: off
+    plan: starter
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: ALLOW_PUBLIC_REGISTRATION
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexus-learnai-postgres
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: GEMINI_API_KEY
+        sync: false
+databases:
+  - name: nexus-learnai-postgres
+    databaseName: nexus_learnai
+    user: nexus_learnai
+    plan: basic-256mb
+    postgresMajorVersion: "17"
