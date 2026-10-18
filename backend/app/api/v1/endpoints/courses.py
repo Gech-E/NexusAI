@@ -56,6 +56,7 @@ async def create_course(payload: CourseCreate, db: DbSession, user: CurrentUser)
     await require_school(db, user, payload.school_id)
     course = Course(
         school_id=payload.school_id,
+        teacher_user_id=user.id if not is_platform_admin(user) else None,
         title=payload.title,
         subject=payload.subject,
         description=payload.description,
