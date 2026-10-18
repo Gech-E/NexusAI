@@ -56,8 +56,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_deployment_secret(self) -> "Settings":
-        if self.app_env != "development" and self.jwt_secret_key == "dev-only-change-me-16chars":
-            raise ValueError("Set JWT_SECRET_KEY before deploying outside development")
+        if self.app_env != "development":
+            if len(self.jwt_secret_key) < 32 or self.jwt_secret_key == "dev-only-change-me-16chars":
+                raise ValueError("Set a unique JWT_SECRET_KEY of at least 32 characters")
+            if self.debug:
+                raise ValueError("DEBUG must be false outside development")
+            if not self.cors_origins or any(not origin.startswith("https://") for origin in self.cors_origins):
+                raise ValueError("Non-development CORS_ORIGINS must be explicit HTTPS origins")
         return self
 
     @property
