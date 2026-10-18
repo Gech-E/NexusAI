@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.deps import CurrentUser, DbSession, require_roles
 from app.core.permissions import require_school, is_platform_admin, user_school_ids
 from app.infrastructure.models.assessment import Question, Quiz
+from app.infrastructure.models.academic import Course
 from app.infrastructure.models.institution import School
 from app.infrastructure.models.user import UserRole
 
@@ -65,6 +66,11 @@ async def create_quiz(payload: QuizCreate, db: DbSession, user: CurrentUser) -> 
     school_res = await db.execute(select(School).where(School.id == payload.school_id))
     if not school_res.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="School not found")
+
+    if payload.course_id:
+        course = await db.get(Course, payload.course_id)
+        if not course or course.school_id != payload.school_id:
+            raise HTTPException(status_code=422, detail="Course must belong to the selected school")
 
     quiz = Quiz(
         school_id=payload.school_id,
