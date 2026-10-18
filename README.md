@@ -1,3 +1,7 @@
+# Release status
+
+**NexusAI is not yet approved for production use with student data.** See [production readiness checklist](docs/production-readiness.md) and [draft pull request #2](https://github.com/Gech-E/NexusAI/pull/2) for current controls, validation and remaining blockers.
+
 # 🧠 Nexus LearnAI — Intelligent Offline-First LMS
 
 Nexus LearnAI is a state-of-the-art Learning Management System designed for the next generation of education. It features a high-performance **FastAPI** backend, a stunning **Next.js 15** frontend, and advanced **AI-powered proctoring and tutoring** capabilities.
