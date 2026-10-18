@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { apiPost } from '@/lib/api';
+import { pendingAttempts, deleteAttempt } from '@/lib/offline';
 
 interface SyncRecord {
   entity_type: string;
@@ -43,17 +44,26 @@ function getDeviceId(): string {
 export const useOfflineSync = () => {
   const setOfflineStatus = useAppStore((state) => state.setOfflineStatus);
   const accessToken = useAppStore((state) => state.accessToken);
+  const userId = useAppStore((state) => state.user?.id);
 
   useEffect(() => {
     let synchronizing = false;
 
     const flush = async () => {
       setOfflineStatus(!navigator.onLine);
-      if (!navigator.onLine || !accessToken || synchronizing) return;
+      if (!navigator.onLine || !accessToken || !userId || synchronizing) return;
       synchronizing = true;
       try {
         // Snapshot the queue and only remove records that were acknowledged.
         // Legacy malformed records remain in storage for manual recovery.
+        // Submit only server-issued, user-owned quiz attempts. The server handles retries.
+        const attempts = await pendingAttempts(userId);
+        for (const attempt of attempts) {
+          try {
+            await apiPost(`/api/v1/quizzes/${attempt.quizId}/submit`, { attempt_id: attempt.attemptId, answers: attempt.answers });
+            await deleteAttempt(userId, attempt.quizId);
+          } catch (error) { console.warn('Quiz sync pending:', error); }
+        }
         const records = readQueue();
         if (!records.length) return;
         const batch = records.slice(0, 100);
@@ -86,5 +96,5 @@ export const useOfflineSync = () => {
       window.removeEventListener('online', flush);
       window.removeEventListener('offline', onOffline);
     };
-  }, [setOfflineStatus, accessToken]);
+  }, [setOfflineStatus, accessToken, userId]);
 };
