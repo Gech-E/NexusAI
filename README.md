@@ -42,7 +42,7 @@ Nexus LearnAI brings course delivery, assessments, progress tracking, and AI-ass
 
 ## Architecture
 
-\`\`\`text
+```text
                      Browser / Next.js
                     (Vercel frontend)
                             |
@@ -58,7 +58,7 @@ Nexus LearnAI brings course delivery, assessments, progress tracking, and AI-ass
                      PostgreSQL
 
   Browser IndexedDB: cached reading content and queued quiz attempts
-\`\`\`
+```
 
 Offline quiz answers are scored **on the server after reconnection**. Full application-wide offline operation is not yet supported.
 
@@ -74,38 +74,38 @@ SQLite can be used for local development; PostgreSQL is recommended for staging 
 
 ### 1. Clone the repository
 
-\`\`\`bash
+```bash
 git clone https://github.com/Gech-E/NexusAI.git
 cd NexusAI
-\`\`\`
+```
 
 ### 2. Start the backend
 
-\`\`\`bash
+```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env          # Windows: copy .env.example .env
-\`\`\`
+```
 
-For a local-only environment, set the following values in \`backend/.env\`:
+For a local-only environment, set the following values in `backend/.env`:
 
-\`\`\`dotenv
+```dotenv
 APP_ENV=development
 DEBUG=false
 DATABASE_URL=sqlite+aiosqlite:///./nexus_local.db
 CORS_ORIGINS=http://localhost:3000
 JWT_SECRET_KEY=replace-with-your-own-long-random-development-secret
 ALLOW_PUBLIC_REGISTRATION=false
-\`\`\`
+```
 
 Create the **first administrator** using the interactive, local-only command:
 
-\`\`\`bash
+```bash
 python -m scripts.bootstrap_admin
 uvicorn app.main:app --reload
-\`\`\`
+```
 
 The admin bootstrap is intended to be run once. Development mode initializes the local schema. Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the development API reference and [http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready) for database readiness.
 
@@ -113,22 +113,22 @@ The admin bootstrap is intended to be run once. Development mode initializes the
 
 Open a second terminal from the repository root:
 
-\`\`\`bash
+```bash
 cd frontend
 npm ci
-\`\`\`
+```
 
-Create \`frontend/.env.local\`:
+Create `frontend/.env.local`:
 
-\`\`\`dotenv
+```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:8000
-\`\`\`
+```
 
 Then run:
 
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
 Open **http://localhost:3000**.
 
@@ -145,7 +145,7 @@ Open **http://localhost:3000**.
 
 ## Tests and quality checks
 
-\`\`\`bash
+```bash
 # Backend, from backend/
 python -m pytest -q tests
 
@@ -153,7 +153,7 @@ python -m pytest -q tests
 npm run typecheck
 npm run lint
 npm run build
-\`\`\`
+```
 
 GitHub Actions runs backend tests and the frontend validation/build workflow for pushes and pull requests. Green CI does **not** replace deployment or security testing.
 
@@ -163,16 +163,16 @@ GitHub Actions runs backend tests and the frontend validation/build workflow for
 | --- | --- |
 | Web application | [nexus-ai-omega-ten.vercel.app](https://nexus-ai-omega-ten.vercel.app) |
 | API | [nexus-learnai-api-demo.onrender.com](https://nexus-learnai-api-demo.onrender.com) |
-| API health | [\`/api/v1/health\`](https://nexus-learnai-api-demo.onrender.com/api/v1/health) |
-| Database readiness | [\`/api/v1/health/ready\`](https://nexus-learnai-api-demo.onrender.com/api/v1/health/ready) |
+| API health | [`/api/v1/health`](https://nexus-learnai-api-demo.onrender.com/api/v1/health) |
+| Database readiness | [`/api/v1/health/ready`](https://nexus-learnai-api-demo.onrender.com/api/v1/health/ready) |
 
-The frontend reads \`NEXT_PUBLIC_API_URL\` to locate the backend. Render requires \`DATABASE_URL\`, a unique \`JWT_SECRET_KEY\`, and HTTPS \`CORS_ORIGINS\` for a non-development deployment. Database migrations must run before serving learning-data requests.
+The frontend reads `NEXT_PUBLIC_API_URL` to locate the backend. Render requires `DATABASE_URL`, a unique `JWT_SECRET_KEY`, and HTTPS `CORS_ORIGINS` for a non-development deployment. Database migrations must run before serving learning-data requests.
 
 See [Render deployment guidance](docs/render-deployment.md) for setup details. **Free-tier services may be slow to wake, and free database storage can expire.** Hosted links show the current portfolio environment, not a service-level availability guarantee.
 
 ## Repository structure
 
-\`\`\`text
+```text
 NexusAI/
 ├── frontend/         Next.js application
 ├── backend/          FastAPI routes, services, ORM models, migrations, tests
@@ -182,7 +182,7 @@ NexusAI/
 ├── docs/             Architecture, release checks, deployment guidance
 ├── scripts/          Project utilities
 └── render.yaml       Render deployment blueprint
-\`\`\`
+```
 
 ## Security and release status
 
