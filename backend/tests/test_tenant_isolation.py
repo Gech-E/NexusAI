@@ -19,7 +19,7 @@ from app.infrastructure.models.user import User, UserRoleAssignment, UserRole
 
 
 @pytest.mark.asyncio
-async def test_cross_school_isolation_and_ai_authorization():
+async def test_cross_school_isolation_and_ai_authorization(monkeypatch):
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", poolclass=StaticPool, echo=False,
     )
@@ -109,6 +109,7 @@ async def test_cross_school_isolation_and_ai_authorization():
 
             hidden_ai = await client.get("/api/v1/ai/stats", headers=auth("student_a"))
             assert hidden_ai.status_code == 403
+            monkeypatch.setattr("app.application.services.auth_service.settings.allow_public_registration", True)
             registration = await client.post(
                 "/api/v1/auth/register",
                 json={"email": "intruder@test.edu", "password": "long-enough-password",
