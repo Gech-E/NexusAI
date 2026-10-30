@@ -21,7 +21,7 @@ Nexus LearnAI brings course delivery, assessments, progress tracking, and AI-ass
 | --- | --- |
 | **Student learning** | Browse and enroll in school courses, take quizzes, review results, and view progress summaries. |
 | **Teaching** | Create courses and quizzes, review assessment outcomes, and explore classroom analytics. |
-| **Administration** | Manage institutions and user roles; issue school-bound student invitations. |
+| **Administration** | Manage institutions and user roles; control whether each school permits self-service student registration. |
 | **Authentication & access** | JWT-based authentication, refresh-token rotation, role checks, and institution-scoped access on core learning endpoints. |
 | **Offline support** | Cache permitted course descriptions/syllabuses in IndexedDB, save started quiz attempts, and retry submissions when reconnected. |
 | **Progress synchronization** | Apply validated course-progress updates with enrollment checks and duplicate handling. |
@@ -135,13 +135,13 @@ Open **http://localhost:3000**.
 ### 4. Try the learning workflow
 
 1. Sign in with the administrator account you created locally.
-2. Create an institution, then issue a student invitation associated with an email address.
-3. Register a student using that invitation and its matching email.
+2. Create an institution, then enable its **Allow student registration without invitations** setting in the administrator dashboard.
+3. Register a student using the approved school's code; no invitation is required when public registration is enabled.
 4. Assign a teacher role to an appropriate account through the administrator workflow.
 5. Create a course and quiz, enroll the student, submit an assessment, and review the result.
 6. Test reconnection by starting a quiz online, disconnecting, and submitting the saved attempt once the connection returns.
 
-> New users **cannot self-assign teacher/admin roles** or join arbitrary institutions. Student registration normally requires an administrator-issued invitation.
+> New users **cannot self-assign teacher/admin roles** or join arbitrary institutions. Student registration is open only when the platform setting and the specific school's registration setting permit it.
 
 ## Tests and quality checks
 
