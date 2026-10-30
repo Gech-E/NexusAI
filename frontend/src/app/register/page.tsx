@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BrainCircuit, Loader2, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
@@ -19,12 +19,6 @@ export default function RegisterPage() {
     inviteToken: '',
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [schools, setSchools] = useState<{ id: string; name: string; slug: string }[]>([]);
-  useEffect(() => {
-    apiGet<{ id: string; name: string; slug: string }[]>('/api/v1/auth/schools', { noAuth: true })
-      .then(setSchools)
-      .catch(() => setSchools([]));
-  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -40,7 +34,7 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: `${formData.firstName} ${formData.lastName}`,
-        school_slug: formData.schoolSlug || undefined,
+        school_slug: formData.schoolSlug.trim() || undefined,
         invite_token: formData.inviteToken.trim() || undefined
       };
 
@@ -149,12 +143,23 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="reg-school" className="block text-sm font-medium text-slate-300 mb-2">Your school</label>
-              <select id="reg-school" value={formData.schoolSlug} onChange={e => setFormData({ ...formData, schoolSlug: e.target.value })}
-                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white" required>
-                <option value="">Select your school</option>
-                {schools.map(school => <option key={school.id} value={school.slug}>{school.name}</option>)}
-              </select>
-              {schools.length === 0 && <p className="text-amber-300 text-xs mt-2">No schools available. Contact the platform administrator to register your school.</p>}
+              <input
+                id="reg-school"
+                name="schoolSlug"
+                type="text"
+                value={formData.schoolSlug}
+                onChange={e => setFormData({ ...formData, schoolSlug: e.target.value })}
+                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                placeholder="Enter your school's code"
+                autoCapitalize="none"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={120}
+                required
+              />
+              <p className="text-slate-400 text-xs mt-2">
+                Enter the school code provided by your administrator (for example, <span className="font-mono">green-valley-school</span>). It must match your invitation.
+              </p>
             </div>
                         <div className="space-y-2">
               <label htmlFor="registration-invite" className="block text-sm font-medium text-slate-300">School invitation code</label>
