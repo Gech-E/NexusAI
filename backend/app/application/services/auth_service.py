@@ -38,19 +38,17 @@ class AuthService:
             )
 
         if not settings.allow_public_registration:
-            if not data.invite_token:
-                raise HTTPException(status_code=403, detail="A school invitation is required")
-            payload = decode_token_safe(data.invite_token)
-            if (
-                not payload
-                or payload.get("type") != "school_invitation"
-                or payload.get("email") != str(data.email).lower()
-                or payload.get("school_slug") != data.school_slug
-                or payload.get("role") != "student"
-            ):
-                raise HTTPException(status_code=403, detail="Invalid or expired school invitation")
-            if not data.school_slug:
-                raise HTTPException(status_code=422, detail="School is required")
+            raise HTTPException(status_code=403, detail="Student registration is closed")
+
+        # A typed code is not proof of belonging to a school. Only schools
+        # explicitly opened by a platform admin accept self-registration.
+        school = (await self.session.execute(
+            select(School).where(School.slug == data.school_slug)
+        )).scalar_one_or_none()
+        if school is None:
+            raise HTTPException(status_code=404, detail="School not found")
+        if not (school.settings or {}).get("open_student_registration", False):
+            raise HTTPException(status_code=403, detail="Student registration is closed for this school")
 
         existing = await self.session.execute(select(User).where(User.email == data.email))
         if existing.scalar_one_or_none():
@@ -68,15 +66,7 @@ class AuthService:
 
         self.session.add(UserRoleAssignment(user_id=user.id, role=UserRole.STUDENT))
 
-        if data.school_slug:
-            res = await self.session.execute(select(School).where(School.slug == data.school_slug))
-            school = res.scalar_one_or_none()
-            if not school:
-                raise HTTPException(status_code=404, detail="School not found")
-            if school:
-                self.session.add(
-                    StudentProfile(user_id=user.id, school_id=school.id, metadata_={}),
-                )
+        self.session.add(StudentProfile(user_id=user.id, school_id=school.id, metadata_={}))
 
         await self.session.commit()
         await self.session.refresh(user)
