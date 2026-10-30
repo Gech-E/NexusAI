@@ -17,8 +17,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=255)
-    school_slug: str | None = Field(default=None, description="Join existing school by slug")
-    invite_token: str | None = Field(default=None, max_length=4096, description="School invitation issued by a platform administrator")
+    school_slug: str = Field(min_length=2, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", description="Code of a school with open student registration")
     role: str | None = Field(default=None, description="Requested role: student, teacher, admin")
 
 
