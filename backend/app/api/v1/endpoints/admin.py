@@ -1,10 +1,6 @@
 """Admin-only endpoints for platform management."""
 
-from uuid import UUID, uuid4
-from datetime import datetime, timedelta, timezone
-from jose import jwt
-from pydantic import EmailStr
-from app.core.config import settings
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -237,6 +233,7 @@ async def list_institutions(db: DbSession) -> list[dict]:
             "id": str(school.id),
             "name": school.name,
             "slug": school.slug,
+            "open_student_registration": bool((school.settings or {}).get("open_student_registration", False)),
             "location": f"{school.country_code or 'N/A'}",
             "timezone": school.timezone,
             "students": student_count,
@@ -254,6 +251,7 @@ class InstitutionCreate(BaseModel):
     slug: str = Field(min_length=2, max_length=120)
     country_code: str | None = Field(default=None, max_length=2)
     timezone: str = Field(default="UTC", max_length=64)
+    open_student_registration: bool = False
 
 
 @router.post(
@@ -272,6 +270,7 @@ async def create_institution(payload: InstitutionCreate, db: DbSession) -> dict:
         slug=payload.slug,
         country_code=payload.country_code,
         timezone=payload.timezone,
+        settings={"open_student_registration": payload.open_student_registration},
     )
     db.add(school)
     await db.commit()
@@ -280,6 +279,7 @@ async def create_institution(payload: InstitutionCreate, db: DbSession) -> dict:
         "id": str(school.id),
         "name": school.name,
         "slug": school.slug,
+        "open_student_registration": bool((school.settings or {}).get("open_student_registration", False)),
         "status": "created",
     }
 
@@ -367,28 +367,19 @@ async def system_health(db: DbSession) -> dict:
     }
 
 
-class StudentInviteRequest(BaseModel):
-    email: EmailStr
-    school_id: UUID
+class SchoolRegistrationSetting(BaseModel):
+    open_student_registration: bool
 
 
-@router.post("/invitations", dependencies=[Depends(require_roles(UserRole.ADMIN))])
-async def create_student_invitation(payload: StudentInviteRequest, db: DbSession) -> dict:
-    """Issue a short-lived, email-bound student invite from a platform admin."""
-    school = await db.get(School, payload.school_id)
+@router.patch(
+    "/institutions/{school_id}/registration",
+    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+)
+async def update_school_registration(school_id: UUID, payload: SchoolRegistrationSetting, db: DbSession) -> dict:
+    """Allow self-service student registration only when a platform admin opts in."""
+    school = await db.get(School, school_id)
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
-    existing = (await db.execute(select(User.id).where(User.email == str(payload.email).lower()))).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
-    expires = datetime.now(timezone.utc) + timedelta(days=7)
-    invitation = jwt.encode({
-        "type": "school_invitation",
-        "sub": str(payload.school_id),
-        "email": str(payload.email).lower(),
-        "school_slug": school.slug,
-        "role": "student",
-        "jti": str(uuid4()),
-        "exp": int(expires.timestamp()),
-    }, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return {"invite_token": invitation, "school_slug": school.slug, "expires_at": expires.isoformat()}
+    school.settings = {**(school.settings or {}), "open_student_registration": payload.open_student_registration}
+    await db.commit()
+    return {"id": str(school.id), "open_student_registration": payload.open_student_registration}
