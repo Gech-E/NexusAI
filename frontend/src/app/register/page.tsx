@@ -16,7 +16,6 @@ export default function RegisterPage() {
     email: '',
     password: '',
     schoolSlug: '',
-    inviteToken: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,8 +33,7 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         full_name: `${formData.firstName} ${formData.lastName}`,
-        school_slug: formData.schoolSlug.trim() || undefined,
-        invite_token: formData.inviteToken.trim() || undefined
+        school_slug: formData.schoolSlug.trim().toLowerCase()
       };
 
       const { access_token, refresh_token } = await apiPost<{ access_token: string; refresh_token: string }>(
@@ -158,13 +156,8 @@ export default function RegisterPage() {
                 required
               />
               <p className="text-slate-400 text-xs mt-2">
-                Enter the school code provided by your administrator (for example, <span className="font-mono">green-valley-school</span>). It must match your invitation.
+                Enter the school code provided by your administrator (for example, <span className="font-mono">green-valley-school</span>). The school must allow student registration. Ask your administrator for its code.
               </p>
-            </div>
-                        <div className="space-y-2">
-              <label htmlFor="registration-invite" className="block text-sm font-medium text-slate-300">School invitation code</label>
-              <textarea id="registration-invite" value={formData.inviteToken} onChange={e => setFormData({...formData, inviteToken: e.target.value})} required rows={2} maxLength={4096} placeholder="Paste the invitation shared by your school" className="w-full rounded-xl border border-slate-700 bg-slate-900/50 px-4 py-3 text-white" />
-              <p className="text-xs text-slate-400">Your school administrator provides this code. It is linked to your email address and expires after seven days.</p>
             </div>
             <p className="text-sm text-slate-400">New accounts start as students. Teachers can request access from their school administrator.</p>
 
