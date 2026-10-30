@@ -24,12 +24,15 @@ interface Institution {
   avgScore: number;
   status: string;
   color: string;
+  open_student_registration: boolean;
 }
 
 export default function Institutions() {
   const accessToken = useAppStore(state => state.accessToken);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [registrationError, setRegistrationError] = useState('');
 
   useEffect(() => {
     const fetchInstitutions = async () => {
@@ -48,6 +51,27 @@ export default function Institutions() {
     fetchInstitutions();
   }, [accessToken]);
 
+  const toggleRegistration = async (school: Institution) => {
+    if (!accessToken || updating) return;
+    setUpdating(school.id);
+    setRegistrationError('');
+    try {
+      const res = await fetch(apiUrl(`/api/v1/admin/institutions/${school.id}/registration`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ open_student_registration: !school.open_student_registration }),
+      });
+      if (!res.ok) throw new Error('Could not update school registration settings');
+      const result: { open_student_registration: boolean } = await res.json();
+      setInstitutions(previous => previous.map(item => item.id === school.id
+        ? { ...item, open_student_registration: result.open_student_registration } : item));
+    } catch (error) {
+      setRegistrationError(error instanceof Error ? error.message : 'Unable to update registration');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 text-purple-400 animate-spin" /></div>;
 
   return (
@@ -61,6 +85,8 @@ export default function Institutions() {
           <Plus className="w-4 h-4" /> Add Institution
         </button>
       </motion.div>
+
+      {registrationError && <p role="alert" className="text-red-400 text-sm">{registrationError}</p>}
 
       {institutions.length === 0 && (
         <div className="text-center py-16 text-slate-500">
@@ -89,6 +115,20 @@ export default function Institutions() {
                 </div>
               </div>
               <h3 className="text-white font-semibold mb-1">{inst.name}</h3>
+              <div className="mb-3 mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-800/60 p-3">
+                <span className="text-xs text-slate-300">Allow student registration without invitations</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(inst.open_student_registration)}
+                  aria-label={`Open registration for ${inst.name}`}
+                  disabled={updating !== null}
+                  onClick={() => toggleRegistration(inst)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${inst.open_student_registration ? 'bg-emerald-500 text-slate-950' : 'bg-slate-700 text-slate-200'}`}
+                >
+                  {updating === inst.id ? 'Saving…' : inst.open_student_registration ? 'Open' : 'Closed'}
+                </button>
+              </div>
               <p className="text-slate-500 text-xs flex items-center gap-1 mb-4"><MapPin className="w-3 h-3" /> {inst.location}</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
