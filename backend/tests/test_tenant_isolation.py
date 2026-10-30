@@ -116,19 +116,30 @@ async def test_cross_school_isolation_and_ai_authorization():
             )
             assert registration.status_code == 403
 
-            invite = await client.post(
-                "/api/v1/admin/invitations", headers=auth("admin"),
-                json={"email": "invited-student@test.edu", "school_id": str(ids["alpha"])},
+            # The platform admin must explicitly open a school before public signup.
+            closed = await client.post(
+                "/api/v1/auth/register",
+                json={"email": "closed@test.edu", "password": "secure-passphrase-123",
+                      "full_name": "Closed Student", "school_slug": "school-alpha"},
             )
-            assert invite.status_code == 200
-            invite_body = invite.json()
+            assert closed.status_code == 403
+            enabled = await client.patch(
+                f"/api/v1/admin/institutions/{ids['alpha']}/registration",
+                headers=auth("admin"), json={"open_student_registration": True},
+            )
+            assert enabled.status_code == 200
             invited = await client.post(
                 "/api/v1/auth/register",
                 json={"email": "invited-student@test.edu", "password": "secure-passphrase-123",
-                      "full_name": "Invited Student", "school_slug": "school-alpha",
-                      "invite_token": invite_body["invite_token"]},
+                      "full_name": "Open Signup Student", "school_slug": "school-alpha"},
             )
             assert invited.status_code == 200
+            denied = await client.post(
+                "/api/v1/auth/register",
+                json={"email": "other@test.edu", "password": "secure-passphrase-123",
+                      "full_name": "Other Student", "school_slug": "school-beta"},
+            )
+            assert denied.status_code == 403
             invited_me = await client.get("/api/v1/users/me",
                 headers={"Authorization": "Bearer " + invited.json()["access_token"]})
             assert invited_me.status_code == 200
